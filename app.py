@@ -2,26 +2,40 @@ import streamlit as st
 import pandas as pd
 from seo_utils import filtrar_contenidos_con_potencial, generar_keywords_por_cluster
 
-st.title("Análisis SEO de Contenidos")
+st.title("Análisis de Contenidos SEO")
 
-st.markdown("### 1. Carga tus archivos")
-archivo_keywords = st.file_uploader("Sube el archivo de keywords (CSV)", type=["csv"])
-archivo_auditoria = st.file_uploader("Sube el archivo de auditoría (XLSX)", type=["xlsx"])
+st.sidebar.header("Carga de archivos")
 
-if archivo_keywords and archivo_auditoria:
-    df_keywords = pd.read_csv(archivo_keywords)
-    df_auditoria = pd.read_excel(archivo_auditoria)
+archivo_keywords = st.sidebar.file_uploader("Sube el archivo de palabras clave", type=["csv", "xlsx"])
+archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría", type=["csv", "xlsx"])
 
-    st.markdown("### 2. Contenidos con potencial de optimización")
+def cargar_archivo(archivo):
+    if archivo is not None:
+        if archivo.name.endswith('.csv'):
+            return pd.read_csv(archivo)
+        elif archivo.name.endswith('.xlsx'):
+            return pd.read_excel(archivo)
+    return None
+
+df_keywords = cargar_archivo(archivo_keywords)
+df_auditoria = cargar_archivo(archivo_auditoria)
+
+if df_keywords is not None and df_auditoria is not None:
+    st.success("Archivos cargados correctamente.")
+
+    st.subheader("Parte 1: Contenidos con potencial de optimización")
     try:
-        df_filtrado = filtrar_contenidos_con_potencial(df_keywords, df_auditoria)
-        st.dataframe(df_filtrado)
+        contenidos_potenciales = filtrar_contenidos_con_potencial(df_keywords, df_auditoria)
+        st.dataframe(contenidos_potenciales)
     except Exception as e:
-        st.error(f"❌ Error al analizar contenidos con potencial: {e}")
+        st.error(f"❌ Error al filtrar contenidos: {e}")
 
-    st.markdown("### 3. Keywords sugeridas por cluster")
+    st.subheader("Parte 2: Palabras clave sugeridas por cluster")
     try:
-        df_keywords_sugeridas = generar_keywords_por_cluster(df_keywords, df_auditoria)
-        st.dataframe(df_keywords_sugeridas)
+        keywords_sugeridas = generar_keywords_por_cluster(df_keywords, df_auditoria)
+        st.dataframe(keywords_sugeridas)
     except Exception as e:
         st.error(f"❌ Error al generar keywords sugeridas: {e}")
+
+else:
+    st.warning("Por favor, sube ambos archivos para continuar.")
