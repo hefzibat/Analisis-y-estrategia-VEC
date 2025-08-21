@@ -1,48 +1,55 @@
+import streamlit as st
 import pandas as pd
-import numpy as np
-import re
+from io import BytesIO
+from seo_utils import filtrar_contenidos_con_potencial
 
-def limpiar_keywords(keywords):
-    if pd.isna(keywords):
-        return []
-    if isinstance(keywords, str):
-        return [k.strip().lower() for k in re.split(r",|\||;", keywords) if k.strip()]
-    return []
+st.set_page_config(layout="wide")
+st.title("Análisis SEO y Estrategia de Contenidos")
 
-def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    # Homogeneiza nombres
-    df_analisis.columns = df_analisis.columns.str.upper().str.strip()
-    df_auditoria.columns = df_auditoria.columns.str.upper().str.strip()
+# --- SIDEBAR: Carga de archivos ---
+st.sidebar.header("Carga de Archivos")
+archivo_analisis = st.sidebar.file_uploader("Carga el archivo de Análisis", type=[".xlsx", ".csv"])
+archivo_auditoria = st.sidebar.file_uploader("Carga el archivo de Auditoría", type=[".xlsx", ".csv"])
 
-    # Validación de columnas necesarias
-    columnas_requeridas = ["URL", "PALABRA CLAVE", "VOLUMEN", "TRÁFICO", "DIFICULTAD"]
-    for col in columnas_requeridas:
-        if col not in df_analisis.columns:
-            raise KeyError(f"Falta la columna requerida en df_analisis: {col}")
+# --- PROCESAMIENTO DE ARCHIVOS ---
+if archivo_analisis and archivo_auditoria:
+    try:
+        # Cargar archivo de análisis
+        if archivo_analisis.name.endswith(".csv"):
+            df_analisis = pd.read_csv(archivo_analisis)
+        else:
+            df_analisis = pd.read_excel(archivo_analisis)
 
-    # Renombrar columna de leads si existe
-    if "LEADS 90 D" in df_analisis.columns:
-        df_analisis = df_analisis.rename(columns={"LEADS 90 D": "GENERA LEADS"})
-    elif "LEADS" in df_analisis.columns:
-        df_analisis = df_analisis.rename(columns={"LEADS": "GENERA LEADS"})
-    else:
-        df_analisis["GENERA LEADS"] = False  # columna dummy si no existe
+        # Diagnóstico de columnas antes de normalizar
+        st.write("🔍 Columnas originales en archivo de análisis:")
+        st.write(list(df_analisis.columns))
 
-    # Unir con auditoría
-    df = pd.merge(df_analisis, df_auditoria, on="URL", how="left")
+        # Normalizar columnas
+        df_analisis.columns = df_analisis.columns.str.upper().str.strip()
 
-    columnas_post_merge = ["PALABRA CLAVE", "VOLUMEN", "TRÁFICO", "DIFICULTAD", "GENERA LEADS"]
-    df = df.dropna(subset=columnas_post_merge, how="any")
+        # Diagnóstico después de normalizar
+        st.write("✅ Columnas estandarizadas en archivo de análisis:")
+        st.write(list(df_analisis.columns))
 
-    # Normalización de métricas
-    df["VOLUMEN_NORM"] = (df["VOLUMEN"] - df["VOLUMEN"].min()) / (df["VOLUMEN"].max() - df["VOLUMEN"].min())
-    df["TRÁFICO_NORM"] = (df["TRÁFICO"] - df["TRÁFICO"].min()) / (df["TRÁFICO"].max() - df["TRÁFICO"].min())
-    df["DIFICULTAD_NORM"] = 1 - ((df["DIFICULTAD"] - df["DIFICULTAD"].min()) / (df["DIFICULTAD"].max() - df["DIFICULTAD"].min()))
-    df["LEADS_NORM"] = df["GENERA LEADS"].apply(lambda x: 1 if x else 0)
+        # Cargar archivo de auditoría
+        if archivo_auditoria.name.endswith(".csv"):
+            df_auditoria = pd.read_csv(archivo_auditoria)
+        else:
+            df_auditoria = pd.read_excel(archivo_auditoria)
 
-    df["SCORE"] = df[["VOLUMEN_NORM", "TRÁFICO_NORM", "DIFICULTAD_NORM", "LEADS_NORM"]].mean(axis=1)
-    df_ordenado = df.sort_values("SCORE", ascending=False)
+        # Normalizar columnas del archivo de auditoría también
+        df_auditoria.columns = df_auditoria.columns.str.upper().str.strip()
 
-    top_contenidos = df_ordenado.head(int(len(df_ordenado) * 0.45))
+        # --- ANÁLISIS PARTE 1 ---
+        st.subheader("1. Contenidos con potencial")
+        df_filtrado = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
 
-    return top_contenidos
+        st.dataframe(df_filtrado[[
+            "URL", "PALABRA CLAVE", "CLUSTER", "SUBCLUSTER",
+            "VOLUMEN", "TRÁFICO", "DIFICULTAD", "GENERA LEADS", "SCORE"
+        ]])
+
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
+else:
+    st.warning("Por favor, carga ambos archivos para comenzar el análisis.")
