@@ -62,7 +62,7 @@ def generar_keywords_por_cluster(df_keywords, df_auditoria):
             if len(corpus) < 2:
                 continue
 
-            vectorizer = TfidfVectorizer(stop_words=stopwords, ngram_range=(1, 2), max_features=15)
+            vectorizer = TfidfVectorizer(stop_words=stopwords.words('spanish'), ngram_range=(1, 2), max_features=15)
             X = vectorizer.fit_transform(corpus)
 
             n_clusters = min(3, len(corpus))
