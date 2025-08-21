@@ -6,10 +6,36 @@ from sklearn.cluster import KMeans
 from collections import Counter
 import re
 import random
-import matplotlib.pyplot as plt
 
-# ---------- UTILIDAD GENERAL ----------
+# ---------- FUNCIÓN PARA HOMOLOGAR COLUMNAS ----------
+def homologar_columnas(df, tipo="analisis"):
+    renombres = {
+        "url": "URL",
+        "palabra clave": "PALABRA CLAVE",
+        "palabras clave": "PALABRA CLAVE",
+        "keyword": "PALABRA CLAVE",
+        "keywords": "PALABRA CLAVE",
+        "volumen": "VOLUMEN",
+        "volumen de búsqueda": "VOLUMEN",
+        "trafico": "TRÁFICO",
+        "tráfico": "TRÁFICO",
+        "tráfico orgánico": "TRÁFICO",
+        "dificultad": "DIFICULTAD",
+        "leads 90 d": "GENERA LEADS",
+        "leads": "GENERA LEADS",
+        "genera leads": "GENERA LEADS"
+    }
 
+    columnas = df.columns.str.strip().str.lower()
+    columnas_nuevas = []
+    for col in columnas:
+        col_nueva = renombres.get(col, col.upper())
+        columnas_nuevas.append(col_nueva)
+
+    df.columns = columnas_nuevas
+    return df
+
+# ---------- FUNCIÓN AUXILIAR ----------
 def limpiar_keywords(keywords):
     if pd.isna(keywords):
         return []
@@ -17,44 +43,29 @@ def limpiar_keywords(keywords):
         return [k.strip().lower() for k in re.split(r",|\||;", keywords) if k.strip()]
     return []
 
-# ---------- HOMOLOGACIÓN DE COLUMNAS CLAVE ----------
-def homologar_columnas(df, posibles_nombres, nuevo_nombre):
-    for col in df.columns:
-        nombre_limpio = col.strip().lower().replace(" ", "").replace("_", "").replace("-", "").replace("ó", "o").replace("á", "a")
-        for posible in posibles_nombres:
-            posible_limpio = posible.strip().lower().replace(" ", "").replace("_", "").replace("-", "").replace("ó", "o").replace("á", "a")
-            if nombre_limpio == posible_limpio:
-                df.rename(columns={col: nuevo_nombre}, inplace=True)
-                return
-    # Si no se encuentra, deja pasar: lo controlamos más adelante
-
-# ---------- FASE 1 ----------
+# ---------- FASE 1: FILTRAR CONTENIDOS CON POTENCIAL ----------
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    df_analisis.columns = df_analisis.columns.str.strip()
-    df_auditoria.columns = df_auditoria.columns.str.strip()
+    df_analisis = homologar_columnas(df_analisis)
+    df_auditoria = homologar_columnas(df_auditoria)
 
-    # Homologar columnas esperadas
-    homologar_columnas(df_analisis, ["palabra clave", "keyword", "palabras clave"], "PALABRA CLAVE")
-    homologar_columnas(df_analisis, ["url", "Url", "URL"], "URL")
-    homologar_columnas(df_analisis, ["volumen", "volumen de búsqueda", "search volume"], "VOLUMEN")
-    homologar_columnas(df_analisis, ["tráfico", "trafico", "tráfico orgánico"], "TRÁFICO")
-    homologar_columnas(df_analisis, ["dificultad", "keyword difficulty", "nivel de dificultad"], "DIFICULTAD")
-    homologar_columnas(df_analisis, ["leads", "leads 90 d", "conversiones", "genera leads"], "GENERA LEADS")
-
-    requeridas = ["URL", "PALABRA CLAVE", "VOLUMEN", "TRÁFICO", "DIFICULTAD", "GENERA LEADS"]
-    for col in requeridas:
+    columnas_necesarias = ["URL", "PALABRA CLAVE", "VOLUMEN", "TRÁFICO", "GENERA LEADS"]
+    for col in columnas_necesarias:
         if col not in df_analisis.columns:
             raise KeyError(f"Falta la columna requerida en df_analisis: {col}")
 
-    # Merge para conservar cluster y subcluster
     df = pd.merge(df_analisis, df_auditoria, on="URL", how="left")
 
-    # Normalización
-    df = df.dropna(subset=["VOLUMEN", "TRÁFICO", "DIFICULTAD"], how="any")
-    df["LEADS_NORM"] = df["GENERA LEADS"].apply(lambda x: 1 if x else 0)
+    columnas_post_merge = ["PALABRA CLAVE", "VOLUMEN", "TRÁFICO", "DIFICULTAD", "GENERA LEADS"]
+    for col in columnas_post_merge:
+        if col not in df.columns:
+            raise KeyError(f"Falta la columna requerida en el archivo combinado: {col}")
+
+    df = df.dropna(subset=columnas_post_merge, how="any")
+
     df["VOLUMEN_NORM"] = (df["VOLUMEN"] - df["VOLUMEN"].min()) / (df["VOLUMEN"].max() - df["VOLUMEN"].min())
     df["TRÁFICO_NORM"] = (df["TRÁFICO"] - df["TRÁFICO"].min()) / (df["TRÁFICO"].max() - df["TRÁFICO"].min())
     df["DIFICULTAD_NORM"] = 1 - ((df["DIFICULTAD"] - df["DIFICULTAD"].min()) / (df["DIFICULTAD"].max() - df["DIFICULTAD"].min()))
+    df["LEADS_NORM"] = df["GENERA LEADS"].apply(lambda x: 1 if x else 0)
 
     df["SCORE"] = df[["VOLUMEN_NORM", "TRÁFICO_NORM", "DIFICULTAD_NORM", "LEADS_NORM"]].mean(axis=1)
     df_ordenado = df.sort_values("SCORE", ascending=False)
@@ -63,10 +74,11 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
 
     return top_contenidos
 
-# ---------- FASE 2 ----------
+# ---------- FASE 2: NUEVAS PALABRAS CLAVE Y CLUSTER ----------
 def generar_nuevas_keywords(df):
-    if "PALABRA CLAVE" not in df.columns:
-        raise KeyError("Falta la columna 'PALABRA CLAVE'")
+    for col in ["PALABRA CLAVE"]:
+        if col not in df.columns:
+            raise KeyError(f"Falta la columna requerida para clustering: {col}")
 
     texto_keywords = [" ".join(limpiar_keywords(kw)) for kw in df["PALABRA CLAVE"]]
     vectorizer = TfidfVectorizer()
@@ -88,9 +100,10 @@ def generar_nuevas_keywords(df):
 
     return df, nuevas_keywords
 
-# ---------- FASE 3 ----------
+# ---------- FASE 3: GENERACIÓN DE SUGERENCIAS DE CONTENIDO ----------
 def generar_sugerencias_contenido(nuevas_keywords, df):
     sugerencias = []
+
     for item in nuevas_keywords:
         cluster = item["cluster"]
         for kw in item["sugerencias"]:
