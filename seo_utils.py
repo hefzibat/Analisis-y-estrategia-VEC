@@ -1,91 +1,136 @@
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
+from collections import Counter
+import re
+import random
+import matplotlib.pyplot as plt
 
-def normalizar_columnas(df):
-    df.columns = df.columns.str.strip().str.upper().str.replace(" ", "_").str.replace("-", "_")
-    return df
+# ---------- UTILIDAD GENERAL ----------
+def limpiar_keywords(keywords):
+    if pd.isna(keywords):
+        return []
+    if isinstance(keywords, str):
+        return [k.strip().lower() for k in re.split(r",|\||;", keywords) if k.strip()]
+    return []
 
-def encontrar_columna(df, posibles_nombres):
-    for nombre in posibles_nombres:
-        for col in df.columns:
-            if nombre.upper() == col.upper().replace(" ", "_").replace("-", "_"):
-                return col
-    return None
-
+# ---------- FASE 1: FILTRAR CONTENIDOS CON POTENCIAL ----------
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    df_analisis = normalizar_columnas(df_analisis)
-    df_auditoria = normalizar_columnas(df_auditoria)
+    df_analisis.columns = df_analisis.columns.str.strip().str.upper()
+    df_auditoria.columns = df_auditoria.columns.str.strip().str.upper()
 
-    col_url = encontrar_columna(df_analisis, ["URL"])
-    col_kw = encontrar_columna(df_analisis, ["PALABRA_CLAVE", "KEYWORD"])
-    col_pos = encontrar_columna(df_analisis, ["POSICION"])
-    col_vol = encontrar_columna(df_analisis, ["VOLUMEN"])
-    col_dif = encontrar_columna(df_analisis, ["DIFICULTAD"])
-    col_tra = encontrar_columna(df_analisis, ["TRAFICO"])
+    posibles_nombres = {
+        "URL": ["URL", "url"],
+        "PALABRA CLAVE": ["PALABRA CLAVE", "palabra_clave", "PALABRA_CLAVE"],
+        "VOLUMEN": ["VOLUMEN"],
+        "TRÁFICO": ["TRÁFICO", "TRAFICO"],
+        "LEADS 90 D": ["LEADS 90 D", "LEADS90D", "LEADS"]
+    }
 
-    if None in [col_url, col_kw, col_pos, col_vol, col_dif, col_tra]:
-        raise ValueError("Falta alguna de las columnas requeridas en df_analisis.")
-
-    col_leads = encontrar_columna(df_auditoria, ["LEADS"])
-    col_funnel = encontrar_columna(df_auditoria, ["ETAPA_DEL_FUNNEL"])
-    col_cluster = encontrar_columna(df_auditoria, ["CLUSTER"])
-    col_subcluster = encontrar_columna(df_auditoria, ["SUBCLUSTER"])
-
-    if None in [col_leads, col_funnel, col_cluster, col_subcluster]:
-        raise ValueError("Faltan columnas requeridas en df_auditoria.")
+    nombre_columnas = {}
+    for key, variantes in posibles_nombres.items():
+        for var in variantes:
+            if var.upper() in df_analisis.columns:
+                nombre_columnas[key] = var.upper()
+                break
+        else:
+            raise KeyError(f"Falta la columna requerida en df_analisis: {key}")
 
     df_analisis = df_analisis.rename(columns={
-        col_url: "URL",
-        col_kw: "PALABRA_CLAVE",
-        col_pos: "POSICION",
-        col_vol: "VOLUMEN",
-        col_dif: "DIFICULTAD",
-        col_tra: "TRAFICO"
+        nombre_columnas["LEADS 90 D"]: "GENERA LEADS",
+        nombre_columnas["PALABRA CLAVE"]: "PALABRA CLAVE",
+        nombre_columnas["TRÁFICO"]: "TRÁFICO",
+        nombre_columnas["VOLUMEN"]: "VOLUMEN",
+        nombre_columnas["URL"]: "URL"
     })
 
-    df_auditoria = df_auditoria.rename(columns={
-        col_url: "URL",
-        col_leads: "LEADS",
-        col_funnel: "ETAPA_DEL_FUNNEL",
-        col_cluster: "CLUSTER",
-        col_subcluster: "SUBCLUSTER"
-    })
+    df = pd.merge(df_analisis, df_auditoria, on="URL", how="left")
 
-    df = pd.merge(df_analisis, df_auditoria, on="URL", how="inner")
+    columnas_post_merge = ["PALABRA CLAVE", "VOLUMEN", "TRÁFICO", "DIFICULTAD", "GENERA LEADS"]
+    for col in columnas_post_merge:
+        if col not in df.columns:
+            raise KeyError(f"Falta la columna requerida en el archivo combinado: {col}")
 
-    df["PUNTAJE"] = (
-        df["VOLUMEN"].fillna(0) * 0.3 +
-        df["TRAFICO"].fillna(0) * 0.3 +
-        (100 - df["POSICION"].fillna(100)) * 0.2 +
-        (100 - df["DIFICULTAD"].fillna(100)) * 0.2
-    )
+    df = df.dropna(subset=columnas_post_merge, how="any")
 
-    df_filtrados = df[df["PUNTAJE"] > df["PUNTAJE"].median()].copy()
-    df_filtrados = df_filtrados.sort_values(by="PUNTAJE", ascending=False)
+    df["VOLUMEN_NORM"] = (df["VOLUMEN"] - df["VOLUMEN"].min()) / (df["VOLUMEN"].max() - df["VOLUMEN"].min())
+    df["TRÁFICO_NORM"] = (df["TRÁFICO"] - df["TRÁFICO"].min()) / (df["TRÁFICO"].max() - df["TRÁFICO"].min())
+    df["DIFICULTAD_NORM"] = 1 - ((df["DIFICULTAD"] - df["DIFICULTAD"].min()) / (df["DIFICULTAD"].max() - df["DIFICULTAD"].min()))
+    df["LEADS_NORM"] = df["GENERA LEADS"].apply(lambda x: 1 if x else 0)
 
-    return df_filtrados
+    df["SCORE"] = df[["VOLUMEN_NORM", "TRÁFICO_NORM", "DIFICULTAD_NORM", "LEADS_NORM"]].mean(axis=1)
+    df_ordenado = df.sort_values("SCORE", ascending=False)
 
+    top_contenidos = df_ordenado.head(int(len(df_ordenado) * 0.45)).copy()
+
+    return top_contenidos
+
+# ---------- FASE 2: NUEVAS PALABRAS CLAVE ----------
 def generar_nuevas_keywords(df):
-    agrupado = df.groupby("CLUSTER")["PALABRA_CLAVE"].apply(lambda x: " ".join(x.dropna().astype(str))).reset_index()
-    agrupado["KEYWORDS_SUGERIDAS"] = agrupado["PALABRA_CLAVE"].apply(lambda texto: _cluster_keywords(texto))
-    return agrupado[["CLUSTER", "KEYWORDS_SUGERIDAS"]]
+    if not {"PALABRA CLAVE", "CLUSTER", "SUBCLUSTER"}.issubset(df.columns):
+        raise KeyError("Faltan columnas necesarias para generar nuevas keywords")
 
-def _cluster_keywords(texto, n_clusters=5):
-    vectorizer = TfidfVectorizer(stop_words='spanish')
-    X = vectorizer.fit_transform([texto])
-    if X.shape[1] < n_clusters:
-        return ", ".join(vectorizer.get_feature_names_out())
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    km.fit(X.T)
-    orden = km.cluster_centers_.sum(axis=1).argsort()[::-1]
-    palabras = vectorizer.get_feature_names_out()
-    clusters = {i: [] for i in range(n_clusters)}
-    for i, label in enumerate(km.labels_):
-        clusters[label].append(palabras[i])
-    return ", ".join([" / ".join(clusters[i][:3]) for i in orden])
+    texto_keywords = [" ".join(limpiar_keywords(kw)) for kw in df["PALABRA CLAVE"]]
+    vectorizer = TfidfVectorizer()
+    X = vectorizer.fit_transform(texto_keywords)
 
-def generar_sugerencias_contenido(df):
-    df["TITULO_PROPUESTO"] = df["KEYWORDS_SUGERIDAS"].apply(lambda k: f"Estrategias para {k.split(',')[0]}")
-    df["CANAL_SUGERIDO"] = df["KEYWORDS_SUGERIDAS"].apply(lambda k: "Blog" if len(k) < 60 else "Video")
-    return df[["CLUSTER", "KEYWORDS_SUGERIDAS", "TITULO_PROPUESTO", "CANAL_SUGERIDO"]]
+    num_clusters = df["CLUSTER"].nunique()
+    df["CLUSTER_NUM"] = pd.factorize(df["CLUSTER"])[0]
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
+    df["CLUSTER_NUM"] = kmeans.fit_predict(X)
+
+    nuevas_keywords = []
+    for i in range(num_clusters):
+        subset = df[df["CLUSTER_NUM"] == i]
+        palabras = []
+        for kw in subset["PALABRA CLAVE"]:
+            palabras.extend(limpiar_keywords(kw))
+        comunes = [k for k, v in Counter(palabras).most_common(5)]
+        cluster_val = subset["CLUSTER"].mode()[0] if not subset["CLUSTER"].mode().empty else f"Cluster {i}"
+        subcluster_val = subset["SUBCLUSTER"].mode()[0] if not subset["SUBCLUSTER"].mode().empty else "General"
+        funnel_val = subset["ETAPA DEL FUNNEL"].mode()[0] if "ETAPA DEL FUNNEL" in subset.columns and not subset["ETAPA DEL FUNNEL"].mode().empty else "No definido"
+
+        nuevas_keywords.append({
+            "cluster": cluster_val,
+            "subcluster": subcluster_val,
+            "funnel": funnel_val,
+            "sugerencias": comunes
+        })
+
+    return df, nuevas_keywords
+
+# ---------- FASE 3: TÍTULOS Y CANALES ----------
+def generar_sugerencias_contenido(nuevas_keywords, df):
+    sugerencias = []
+
+    for item in nuevas_keywords:
+        cluster = item["cluster"]
+        subcluster = item["subcluster"]
+        funnel = item["funnel"]
+
+        if funnel == "TOFU":
+            canales = ["Blog", "Chatbot con contenido SEO", "Secuencia automatizada en WhatsApp"]
+        elif funnel == "MOFU":
+            canales = ["Landing page / Lead magnet", "Email de nutrición", "Flujo en HubSpot con IA"]
+        elif funnel == "BOFU":
+            canales = ["Email de conversión", "WhatsApp con CTA", "Demo automatizada"]
+        else:
+            canales = ["Blog", "Email de nutrición", "Newsletter generado por IA"]
+
+        for kw in item["sugerencias"]:
+            canal = random.choice(canales)
+            titulo = f"Estrategias para {kw} en tu organización"
+
+            sugerencias.append({
+                "Keyword": kw,
+                "Título sugerido": titulo,
+                "Canal": canal,
+                "Cluster": cluster,
+                "Subcluster": subcluster,
+                "Etapa del funnel": funnel
+            })
+
+    return pd.DataFrame(sugerencias)
+
