@@ -1,54 +1,71 @@
 import pandas as pd
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.cluster import KMeans
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    # Convertir nombres de columnas a minúsculas
-    df_analisis.columns = df_analisis.columns.str.lower()
-    df_auditoria.columns = df_auditoria.columns.str.lower()
+    # Limpiar nombres de columnas
+    df_analisis.columns = df_analisis.columns.str.strip()
+    df_auditoria.columns = df_auditoria.columns.str.strip()
 
-    # Validar columnas requeridas
-    columnas_analisis = ['url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda', 'dificultad', 'tráfico_estimado']
-    columnas_auditoria = ['url', 'título', 'tipo de contenido', 'cluster', 'sub-cluster (si aplica)', 'leads 90 d *(esta se usará como \'genera_leads\')']
-
+    # Validar columnas necesarias
+    columnas_analisis = [
+        "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda",
+        "dificultad", "tráfico_estimado", "tipo_de_contenido"
+    ]
+    columnas_auditoria = [
+        "URL", "Cluster", "Sub-cluster (si aplica)", "Leads 90 d"
+    ]
     for col in columnas_analisis:
         if col not in df_analisis.columns:
-            raise ValueError(f"Columna faltante en archivo de análisis: {col}")
+            raise ValueError(f"Falta la columna requerida en df_analisis: {col}")
     for col in columnas_auditoria:
         if col not in df_auditoria.columns:
-            raise ValueError(f"Columna faltante en archivo de auditoría: {col}")
+            raise ValueError(f"Falta la columna requerida en df_auditoria: {col}")
 
-    df = pd.merge(df_analisis, df_auditoria, on='url', how='left')
+    # Homologar URLs
+    df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
+    df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-    # Calcular score combinado
-    df['posición_normalizada'] = 1 - (df['posición_promedio'] / df['posición_promedio'].max())
-    df['volumen_normalizado'] = df['volumen_de_búsqueda'] / df['volumen_de_búsqueda'].max()
-    df['tráfico_normalizado'] = df['tráfico_estimado'] / df['tráfico_estimado'].max()
-    df['score_optimizacion'] = (df['posición_normalizada'] + df['volumen_normalizado'] + df['tráfico_normalizado']) / 3
+    # Renombrar columnas para merge
+    df_auditoria = df_auditoria.rename(columns={
+        "URL": "url",
+        "Leads 90 d": "genera_leads"
+    })
 
-    df_resultado = df.sort_values(by='score_optimizacion', ascending=False).head(40)
-    return df_resultado
+    # Conservar columnas útiles
+    columnas_utiles = ["url", "Cluster", "Sub-cluster (si aplica)", "genera_leads"]
+    df_auditoria = df_auditoria[columnas_utiles]
 
-def generar_keywords_por_cluster(df, num_keywords=5):
-    df = df.copy()
-    df.columns = df.columns.str.lower()
+    # Hacer merge
+    df = pd.merge(df_analisis, df_auditoria, on="url", how="inner")
 
-    if 'palabra_clave' not in df.columns or 'cluster' not in df.columns:
-        raise ValueError("Las columnas 'palabra_clave' y 'cluster' deben estar en el DataFrame")
+    # Convertir a numérico
+    for col in ["posición_promedio", "volumen_de_búsqueda", "dificultad", "tráfico_estimado"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["genera_leads"] = pd.to_numeric(df["genera_leads"], errors="coerce").fillna(0)
 
-    resultados = []
-    for cluster, grupo in df.groupby('cluster'):
-        textos = grupo['palabra_clave'].dropna().astype(str)
-        if len(textos) == 0:
-            continue
-        vectorizer = TfidfVectorizer()
-        tfidf = vectorizer.fit_transform(textos)
-        sum_tfidf = tfidf.sum(axis=0).A1
-        palabras = vectorizer.get_feature_names_out()
-        top_keywords = [palabras[i] for i in sum_tfidf.argsort()[::-1][:num_keywords]]
-        resultados.append({
-            'cluster': cluster,
-            'sugerencias_keywords': ', '.join(top_keywords)
-        })
-    return pd.DataFrame(resultados)
+    # Calcular score
+    df["score"] = (
+        (1 / (df["posición_promedio"] + 1)) * 0.3 +
+        (df["volumen_de_búsqueda"] / df["volumen_de_búsqueda"].max()) * 0.3 +
+        (df["tráfico_estimado"] / df["tráfico_estimado"].max()) * 0.2 +
+        (1 - df["dificultad"] / 100) * 0.1 +
+        (df["genera_leads"] > 0).astype(int) * 0.1
+    )
+
+    df_resultado = df.sort_values(by="score", ascending=False).head(45)
+
+    # Renombrar columnas solo para visualización
+    df_resultado = df_resultado.rename(columns={
+        "palabra_clave": "Palabra Clave",
+        "volumen_de_búsqueda": "Volumen",
+        "tráfico_estimado": "Tráfico",
+        "dificultad": "Dificultad",
+        "genera_leads": "Genera Leads",
+        "score": "Score"
+    })
+
+    # Seleccionar columnas a mostrar
+    columnas_finales = [
+        "url", "Palabra Clave", "Cluster", "Sub-cluster (si aplica)",
+        "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
+    ]
+    return df_resultado[columnas_finales]
