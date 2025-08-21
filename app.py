@@ -6,13 +6,14 @@ from seo_utils import (
     generar_sugerencias_keywords
 )
 
+# Configuración de la app
 st.set_page_config(page_title="Análisis y Estrategia SEO - VEC", layout="wide")
 st.title("🔍 Análisis y Estrategia SEO - VEC")
 
-# Subida de archivos
+# Carga de archivos
 st.sidebar.header("Carga de archivos")
-archivo_seo = st.sidebar.file_uploader("Sube el archivo SEO (.xlsx o .csv)", type=["xlsx", "csv"])
-archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría (.xlsx o .csv)", type=["xlsx", "csv"])
+archivo_seo = st.sidebar.file_uploader("Sube el archivo SEO (.xlsx)", type=["xlsx"])
+archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría (.csv, .xlsx)", type=["csv", "xlsx"])
 
 if archivo_seo and archivo_auditoria:
     try:
@@ -31,8 +32,8 @@ if archivo_seo and archivo_auditoria:
             mime="text/csv",
         )
 
-        # PARTE 2: Sugerencias de nuevas keywords
-        st.subheader("✨ Parte 2: Sugerencias de nuevas keywords por clúster")
+        # PARTE 2: Sugerencias de nuevas keywords por clúster
+        st.subheader("✨ Parte 2: Palabras clave sugeridas por cluster y etapa del funnel")
         sugerencias_keywords = generar_sugerencias_keywords(df_seo, df_auditoria)
         st.dataframe(sugerencias_keywords, use_container_width=True)
 
