@@ -1,26 +1,32 @@
+# app.py
 import streamlit as st
+import pandas as pd
 from seo_utils import (
-    cargar_datos, seleccionar_contenidos_para_optimizar,
-    mostrar_clusters, generar_estrategia_contenido
+    cargar_datos,
+    obtener_contenidos_para_optimizar,
+    visualizar_clusters,
+    generar_sugerencias_keywords
 )
 
-st.set_page_config(page_title="SEO VEC - Estrategia de Contenidos", layout="wide")
+st.set_page_config(page_title="Estrategia SEO VEC", layout="wide")
+st.title("🔍 Estrategia de Contenidos SEO - VEC")
 
-st.title("🔍 SEO VEC - Estrategia de Contenidos")
+st.sidebar.header("Carga de archivos")
+archivo_keywords = st.sidebar.file_uploader("Sube el archivo de palabras clave (Excel)", type=["xlsx"])
+archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría de contenidos (Excel)", type=["xlsx"])
 
-# Parte 1: Selección de contenidos para optimizar
-st.header("📌 Parte 1: Contenidos Recomendados para Optimizar")
-df_optimizacion = cargar_datos()
-if df_optimizacion is not None:
-    seleccionados = seleccionar_contenidos_para_optimizar(df_optimizacion)
-    st.dataframe(seleccionados)
+if archivo_keywords and archivo_auditoria:
+    df = cargar_datos(archivo_keywords, archivo_auditoria)
 
-# Parte 2: Visualización de clusters
-st.header("🧠 Parte 2: Distribución por Clusters y Subclusters")
-if df_optimizacion is not None:
-    mostrar_clusters(df_optimizacion)
+    st.header("1. Contenidos con alto potencial de optimización")
+    optimizables = obtener_contenidos_para_optimizar(df)
+    st.write(optimizables)
 
-# Parte 3: Sugerencias de nueva estrategia de contenido
-st.header("🪄 Parte 3: Estrategia de Contenido con Nuevas Palabras Clave")
-if df_optimizacion is not None:
-    generar_estrategia_contenido(df_optimizacion)
+    st.header("2. Visualización de clusters")
+    visualizar_clusters(df)
+
+    st.header("3. Sugerencias de nuevas keywords y canales")
+    sugerencias = generar_sugerencias_keywords(df)
+    st.dataframe(sugerencias)
+else:
+    st.warning("Por favor, sube ambos archivos para comenzar el análisis.")
