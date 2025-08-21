@@ -1,51 +1,40 @@
 import streamlit as st
 import pandas as pd
 from seo_utils import (
-    cargar_datos,
-    filtrar_contenido_optimizacion,
-    generar_sugerencias_keywords
+    filtrar_contenidos_con_potencial,
+    generar_keywords_por_cluster
 )
 
-# Configuración de la app
 st.set_page_config(page_title="Análisis y Estrategia SEO - VEC", layout="wide")
 st.title("🔍 Análisis y Estrategia SEO - VEC")
 
-# Carga de archivos
 st.sidebar.header("Carga de archivos")
-archivo_seo = st.sidebar.file_uploader("Sube el archivo SEO (.xlsx)", type=["xlsx"])
-archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría (.csv, .xlsx)", type=["csv", "xlsx"])
+archivo_seo = st.sidebar.file_uploader("Sube el archivo SEO (.xlsx o .csv)", type=["xlsx", "csv"])
+archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría (.xlsx o .csv)", type=["xlsx", "csv"])
+
+def leer_archivo(archivo):
+    if archivo.name.endswith(".csv"):
+        return pd.read_csv(archivo)
+    else:
+        return pd.read_excel(archivo)
 
 if archivo_seo and archivo_auditoria:
     try:
-        df_seo, df_auditoria = cargar_datos(archivo_seo, archivo_auditoria)
+        df_seo = leer_archivo(archivo_seo)
+        df_auditoria = leer_archivo(archivo_auditoria)
 
-        # PARTE 1: Contenido con potencial
-        st.subheader("✅ Parte 1: Contenido con mayor potencial de optimización")
-        contenido_potencial = filtrar_contenido_optimizacion(df_seo, df_auditoria)
-        st.dataframe(contenido_potencial, use_container_width=True)
+        # Parte 1
+        st.subheader("✅ Parte 1: Contenidos con potencial")
+        resultados_1 = filtrar_contenidos_con_potencial(df_seo, df_auditoria)
+        st.dataframe(resultados_1, use_container_width=True)
 
-        csv_potencial = contenido_potencial.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 Descargar tabla de contenidos con potencial",
-            data=csv_potencial,
-            file_name="contenido_con_potencial.csv",
-            mime="text/csv",
-        )
-
-        # PARTE 2: Sugerencias de nuevas keywords por clúster
+        # Parte 2
         st.subheader("✨ Parte 2: Palabras clave sugeridas por cluster y etapa del funnel")
-        sugerencias_keywords = generar_sugerencias_keywords(df_seo, df_auditoria)
-        st.dataframe(sugerencias_keywords, use_container_width=True)
-
-        csv_keywords = sugerencias_keywords.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="📥 Descargar tabla de nuevas keywords",
-            data=csv_keywords,
-            file_name="nuevas_keywords_por_cluster.csv",
-            mime="text/csv",
-        )
+        resultados_2 = generar_keywords_por_cluster(df_seo, df_auditoria)
+        st.dataframe(resultados_2, use_container_width=True)
 
     except Exception as e:
         st.error(f"❌ Error al procesar los archivos: {str(e)}")
+
 else:
     st.info("⬅️ Por favor, sube ambos archivos para comenzar el análisis.")
