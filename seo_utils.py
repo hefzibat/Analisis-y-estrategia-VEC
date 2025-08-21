@@ -1,6 +1,9 @@
 import pandas as pd
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
+    # 🔍 Depuración: imprimir columnas reales de auditoría
+    print("🟡 Columnas reales en df_auditoria:", df_auditoria.columns.tolist())
+
     # Limpiar nombres de columnas
     df_analisis.columns = df_analisis.columns.str.strip()
     df_auditoria.columns = df_auditoria.columns.str.strip()
