@@ -5,10 +5,10 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     df_analisis.columns = df_analisis.columns.str.strip()
     df_auditoria.columns = df_auditoria.columns.str.strip()
 
-    # 👇 DEBUG: Mostrar las columnas de auditoría para verificar el nombre real de 'Cluster'
+    # DEBUG: Mostrar columnas para revisar si 'Cluster' está correctamente escrito
     print("🎯 Columnas detectadas en df_auditoria:")
     for col in df_auditoria.columns:
-        print(f"- '{col}'")
+        print(f"-> '{col}'")
 
     # Validar columnas necesarias en archivo de análisis
     columnas_analisis = [
@@ -31,13 +31,13 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
     df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-    # Renombrar solo columnas necesarias para merge
+    # Renombrar columnas para merge
     df_auditoria_renombrado = df_auditoria.rename(columns={
         "URL": "url",
         "Leads 90 d": "genera_leads"
     })
 
-    # Conservar columnas necesarias después del merge
+    # Conservar columnas necesarias después del rename
     columnas_utiles = ["url", "Cluster", "Sub-cluster (si aplica)", "genera_leads"]
     df_auditoria_renombrado = df_auditoria_renombrado[columnas_utiles]
 
@@ -51,7 +51,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
 
     df["genera_leads"] = pd.to_numeric(df["genera_leads"], errors="coerce").fillna(0)
 
-    # Cálculo de score
+    # Calcular score
     df["score"] = (
         (1 / (df["posición_promedio"] + 1)) * 0.3 +
         (df["volumen_de_búsqueda"] / df["volumen_de_búsqueda"].max()) * 0.3 +
@@ -72,7 +72,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         "score": "Score"
     })
 
-    # Preparar columnas finales (solo si existen)
+    # Columnas finales para mostrar
     columnas_finales = [
         "url", "Palabra Clave", "Cluster", "Sub-cluster (si aplica)",
         "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
