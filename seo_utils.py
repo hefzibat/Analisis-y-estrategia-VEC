@@ -1,4 +1,5 @@
 import pandas as pd
+import random
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     # Limpiar nombres de columnas
@@ -71,88 +72,47 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     return df_resultado[columnas_finales]
     
 def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
-    import pandas as pd
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
+    # Normalizar y unificar columnas
+    contenidos_existentes = pd.concat([df_analisis['palabra_clave'], df_auditoria['Título']], axis=0).astype(str).str.lower().unique()
+    nuevas_keywords = df_keywords_externas['palabra_clave'].dropna().astype(str).str.lower().unique()
 
-    # Renombrar columna si viene como 'Keyword'
-    if 'Keyword' in df_keywords_externas.columns:
-        df_keywords_externas = df_keywords_externas.rename(columns={"Keyword": "palabra_clave"})
+    # Filtrar solo las que no están ya usadas
+    keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
 
-    # Validar columnas necesarias
-    columnas_analisis = ['palabra_clave']
-    columnas_auditoria = ['Cluster', 'Sub-cluster (si aplica)']
-    columnas_externas = ['palabra_clave']
-
-    for col in columnas_analisis:
-        if col not in df_analisis.columns:
-            raise ValueError(f"Falta columna en archivo de análisis: {col}")
-    for col in columnas_auditoria:
-        if col not in df_auditoria.columns:
-            raise ValueError(f"Falta columna en auditoría: {col}")
-    for col in columnas_externas:
-        if col not in df_keywords_externas.columns:
-            raise ValueError(f"Falta columna en keywords externas: {col}")
-
-    # Preprocesar
-    df_analisis['palabra_clave'] = df_analisis['palabra_clave'].str.lower().str.strip()
-    df_keywords_externas['palabra_clave'] = df_keywords_externas['palabra_clave'].str.lower().str.strip()
-
-    # Filtrar keywords externas nuevas
-    keywords_actuales = df_analisis['palabra_clave'].unique()
-    df_nuevas = df_keywords_externas[~df_keywords_externas['palabra_clave'].isin(keywords_actuales)].copy()
-
-    if df_nuevas.empty:
-        return pd.DataFrame(columns=["Palabra Clave", "Título posible", "Cluster", "Subcluster", "Canal sugerido"])
-
-    # Similaridad para clusters y subclusters
-    df_nuevas['match_cluster'] = ''
-    df_nuevas['match_subcluster'] = ''
-
-    clusters = df_auditoria['Cluster'].dropna().unique()
-    subclusters = df_auditoria['Sub-cluster (si aplica)'].dropna().unique()
-
-    vectorizer = TfidfVectorizer().fit(list(df_nuevas['palabra_clave']) + list(clusters) + list(subclusters))
-    keyword_vecs = vectorizer.transform(df_nuevas['palabra_clave'])
-
-    if len(clusters) > 0:
-        cluster_vecs = vectorizer.transform(clusters)
-        sim_cluster = cosine_similarity(keyword_vecs, cluster_vecs)
-        best_cluster = sim_cluster.argmax(axis=1)
-        df_nuevas['match_cluster'] = [clusters[i] for i in best_cluster]
-
-    if len(subclusters) > 0:
-        subcluster_vecs = vectorizer.transform(subclusters)
-        sim_subcluster = cosine_similarity(keyword_vecs, subcluster_vecs)
-        best_subcluster = sim_subcluster.argmax(axis=1)
-        df_nuevas['match_subcluster'] = [subclusters[i] for i in best_subcluster]
-    else:
-        df_nuevas['match_subcluster'] = ''
-
-    def canal_sugerido(palabra):
-        palabra = palabra.lower()
-        if any(x in palabra for x in ["automatiza", "herramienta", "plantilla", "generador"]):
-            return "herramienta de ia"
-        elif any(x in palabra for x in ["flujo", "proceso", "etapas", "pasos"]):
-            return "flujo"
-        elif any(x in palabra for x in ["email", "newsletter", "correos"]):
-            return "email"
-        elif any(x in palabra for x in ["ebook", "guía", "checklist", "descargable"]):
-            return "lead magnet"
-        else:
-            return "blog"
-
-    df_nuevas['canal'] = df_nuevas['palabra_clave'].apply(canal_sugerido)
-    df_nuevas['titulo'] = df_nuevas['palabra_clave'].apply(lambda x: f"Cómo aprovechar {x} en tu estrategia")
-
-    df_resultado = df_nuevas.rename(columns={
-        'palabra_clave': 'Palabra Clave',
-        'match_cluster': 'Cluster',
-        'match_subcluster': 'Subcluster',
-        'canal': 'Canal sugerido',
-        'titulo': 'Título posible'
-    })[
-        ['Palabra Clave', 'Título posible', 'Cluster', 'Subcluster', 'Canal sugerido']
+    # Plantillas variadas para generar títulos
+    plantillas = [
+        "Cómo lograr {kw} en 5 pasos",
+        "Errores comunes al intentar {kw} y cómo evitarlos",
+        "¿Vale la pena enfocarse en {kw}? Descúbrelo aquí",
+        "Estrategias efectivas para {kw} que sí funcionan",
+        "Domina el arte de {kw} sin complicarte",
+        "Qué es {kw} y por qué deberías saberlo hoy",
+        "Guía práctica para empezar con {kw}",
+        "Los secretos de {kw} que nadie te cuenta"
     ]
 
-    return df_resultado
+    # Función para sugerir canal según el tipo de keyword
+    def sugerir_canal(kw):
+        if any(palabra in kw for palabra in ["qué es", "cómo", "guía", "pasos", "estrategia"]):
+            return "Blog"
+        elif any(palabra in kw for palabra in ["errores", "evitar", "mitos"]):
+            return "Carrusel Instagram / LinkedIn"
+        elif any(palabra in kw for palabra in ["secreto", "truco", "consejo"]):
+            return "Reel / YouTube Shorts"
+        elif any(palabra in kw for palabra in ["domina", "aprende", "mejorar"]):
+            return "Video educativo largo"
+        else:
+            return "Blog o Carrusel"
+
+    resultados = []
+    for kw in keywords_nuevas:
+        plantilla = random.choice(plantillas)
+        titulo = plantilla.format(kw=kw)
+        canal = sugerir_canal(kw)
+        resultados.append({
+            "Palabra clave": kw,
+            "Título sugerido": titulo,
+            "Canal sugerido": canal
+        })
+
+    return pd.DataFrame(resultados)
