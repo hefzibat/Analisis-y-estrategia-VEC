@@ -1,42 +1,45 @@
 import streamlit as st
 import pandas as pd
-from seo_utils import filtrar_contenidos_con_potencial, generar_keywords_por_cluster
+from seo_utils import (
+    filtrar_contenidos_con_potencial,
+    generar_keywords_por_cluster
+)
 
-st.set_page_config(page_title="Análisis SEO VEC", layout="wide")
-st.title("🔍 Análisis de contenidos y estrategia SEO")
+st.set_page_config(layout="wide")
+st.title("🧠 Análisis de Contenidos y Estrategia SEO")
 
-st.sidebar.header("Carga tus archivos")
-archivo_keywords = st.sidebar.file_uploader("📄 Archivo de keywords (CSV o Excel)", type=["csv", "xlsx"])
-archivo_auditoria = st.sidebar.file_uploader("📊 Archivo de auditoría (CSV o Excel)", type=["csv", "xlsx"])
+st.markdown("### 1️⃣ Subir archivos")
+archivo_keywords = st.file_uploader("Sube el archivo de resultados de keywords", type=["csv", "xlsx"])
+archivo_auditoria = st.file_uploader("Sube el archivo de auditoría de contenidos", type=["csv", "xlsx"])
 
-def cargar_datos(archivo):
-    if archivo is not None:
-        nombre = archivo.name.lower()
-        if nombre.endswith('.csv'):
-            return pd.read_csv(archivo)
-        elif nombre.endswith('.xlsx'):
-            return pd.read_excel(archivo)
-    return None
+def leer_archivo(archivo):
+    if archivo.name.endswith(".csv"):
+        return pd.read_csv(archivo)
+    elif archivo.name.endswith(".xlsx"):
+        return pd.read_excel(archivo)
+    else:
+        raise ValueError("Formato de archivo no soportado")
 
-df_keywords = cargar_datos(archivo_keywords)
-df_auditoria = cargar_datos(archivo_auditoria)
-
-if df_keywords is not None and df_auditoria is not None:
-    st.markdown("### 1️⃣ Contenidos con potencial para optimizar")
+if archivo_keywords and archivo_auditoria:
     try:
-        df_filtrado = filtrar_contenidos_con_potencial(df_keywords, df_auditoria)
-        st.success(f"{len(df_filtrado)} contenidos encontrados con alto potencial")
-        st.dataframe(df_filtrado, use_container_width=True)
-    except Exception as e:
-        st.error(f"❌ Error al procesar los archivos: {e}")
+        df_keywords = leer_archivo(archivo_keywords)
+        df_auditoria = leer_archivo(archivo_auditoria)
 
-    st.markdown("---")
-    st.markdown("### 2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
-    try:
-        df_sugerencias = generar_keywords_por_cluster(df_keywords, df_auditoria)
-        st.success(f"{len(df_sugerencias)} palabras clave sugeridas generadas")
-        st.dataframe(df_sugerencias, use_container_width=True)
+        st.markdown("### ✅ Archivos cargados correctamente")
+
+        st.markdown("### 1️⃣ Contenidos con potencial para optimizar")
+        try:
+            df_top = filtrar_contenidos_con_potencial(df_keywords, df_auditoria)
+            st.dataframe(df_top[["palabra_clave", "url", "score", "Cluster", "Sub-cluster (si aplica)", "Etapa del funnel"]])
+        except Exception as e:
+            st.error(f"❌ Error al procesar los archivos: {e}")
+
+        st.markdown("### 2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
+        try:
+            df_keywords_sugeridas = generar_keywords_por_cluster(df_top, df_auditoria)
+            st.dataframe(df_keywords_sugeridas)
+        except Exception as e:
+            st.error(f"❌ Error al procesar los archivos: {e}")
+
     except Exception as e:
-        st.error(f"❌ Error al procesar los archivos: {e}")
-else:
-    st.warning("👈 Carga ambos archivos para iniciar el análisis.")
+        st.error(f"❌ Error al cargar los archivos: {e}")
