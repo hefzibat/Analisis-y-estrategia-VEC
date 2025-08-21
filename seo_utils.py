@@ -1,10 +1,9 @@
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.cluster import KMeans
 
 
 def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
     try:
+        # Aseguramos tipos numéricos
         df_keywords["posición_promedio"] = pd.to_numeric(df_keywords["posición_promedio"], errors="coerce")
         df_keywords["volumen_de_búsqueda"] = pd.to_numeric(df_keywords["volumen_de_búsqueda"], errors="coerce")
         df_keywords["tráfico_estimado"] = pd.to_numeric(df_keywords["tráfico_estimado"], errors="coerce")
@@ -12,6 +11,7 @@ def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
 
         df_keywords = df_keywords.dropna(subset=["posición_promedio", "volumen_de_búsqueda", "tráfico_estimado", "dificultad"])
 
+        # Unión por URL
         df_merged = pd.merge(
             df_keywords,
             df_auditoria,
@@ -20,6 +20,7 @@ def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
             how="inner"
         )
 
+        # Normalización de leads
         df_merged["genera_leads"] = pd.to_numeric(df_merged["Leads 90 d"], errors="coerce").fillna(0)
 
         df_filtrado = df_merged[
@@ -31,12 +32,13 @@ def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
         ]
 
         return df_filtrado[[
-            "palabra_clave", "posición_promedio", "volumen_de_búsqueda", "tráfico_estimado",
+            "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda", "tráfico_estimado",
             "dificultad", "tipo_de_contenido", "Cluster", "Sub-cluster (si aplica)",
             "Vigencia del contenido", "genera_leads", "Etapa del funnel"
         ]]
+
     except Exception as e:
-        raise RuntimeError(f"Error al filtrar contenidos: {e}")
+        raise RuntimeError(f"Error en filtrado: {e}")
 
 
 def generar_palabras_clave_sugeridas(df_filtrado):
