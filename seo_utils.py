@@ -1,12 +1,17 @@
 import pandas as pd
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    # 🔍 Depuración: imprimir columnas reales de auditoría
-    print("🟡 Columnas reales en df_auditoria:", df_auditoria.columns.tolist())
+    # Mostrar columnas originales antes de limpiar
+    print("📎 Columnas originales en df_analisis:", df_analisis.columns.tolist())
+    print("📎 Columnas originales en df_auditoria:", df_auditoria.columns.tolist())
 
-    # Limpiar nombres de columnas
+    # Limpiar espacios en nombres de columnas
     df_analisis.columns = df_analisis.columns.str.strip()
     df_auditoria.columns = df_auditoria.columns.str.strip()
+
+    # Mostrar columnas después de limpiar
+    print("🧼 Columnas en df_analisis (tras limpiar):", df_analisis.columns.tolist())
+    print("🧼 Columnas en df_auditoria (tras limpiar):", df_auditoria.columns.tolist())
 
     # Validar columnas necesarias en archivo de análisis
     columnas_analisis = [
@@ -15,7 +20,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     ]
     for col in columnas_analisis:
         if col not in df_analisis.columns:
-            raise ValueError(f"Falta la columna requerida en df_analisis: {col}")
+            raise ValueError(f"❌ Falta la columna requerida en df_analisis: {col}")
 
     # Validar columnas necesarias en archivo de auditoría
     columnas_auditoria = [
@@ -23,19 +28,19 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     ]
     for col in columnas_auditoria:
         if col not in df_auditoria.columns:
-            raise ValueError(f"Falta la columna requerida en df_auditoria: {col}")
+            raise ValueError(f"❌ Falta la columna requerida en df_auditoria: {col}")
 
     # Homologar URLs
     df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
     df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-    # Renombrar solo columnas necesarias para merge
+    # Renombrar columnas para merge
     df_auditoria_renombrado = df_auditoria.rename(columns={
         "URL": "url",
         "Leads 90 d": "genera_leads"
     })
 
-    # Conservar columnas necesarias después del merge
+    # Conservar columnas necesarias
     columnas_utiles = ["url", "Cluster", "Sub-cluster (si aplica)", "genera_leads"]
     df_auditoria_renombrado = df_auditoria_renombrado[columnas_utiles]
 
@@ -60,7 +65,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
 
     df_resultado = df.sort_values(by="score", ascending=False).head(45)
 
-    # Renombrar columnas solo para visualización
+    # Renombrar columnas para visualización
     df_resultado = df_resultado.rename(columns={
         "palabra_clave": "Palabra Clave",
         "volumen_de_búsqueda": "Volumen",
@@ -70,7 +75,9 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         "score": "Score"
     })
 
-    # Preparar columnas finales (solo si existen)
+    # Mostrar columnas finales antes de return
+    print("📤 Columnas en df_resultado:", df_resultado.columns.tolist())
+
     columnas_finales = [
         "url", "Palabra Clave", "Cluster", "Sub-cluster (si aplica)",
         "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
