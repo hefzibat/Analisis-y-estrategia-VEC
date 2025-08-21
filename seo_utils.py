@@ -74,13 +74,17 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     import random
     import pandas as pd
 
+    # Asegurar que la columna 'Keyword' exista
+    if "Keyword" not in df_keywords_externas.columns:
+        raise KeyError("El archivo externo debe contener una columna llamada 'Keyword'")
+
     # 1. Unificar y limpiar keywords existentes
     contenidos_existentes = pd.concat([
         df_analisis['palabra_clave'].astype(str).str.lower(),
         df_auditoria['Título'].astype(str).str.lower()
     ], axis=0).unique()
 
-    nuevas_keywords = df_keywords_externas['palabra_clave'].dropna().astype(str).str.lower().unique()
+    nuevas_keywords = df_keywords_externas['Keyword'].dropna().astype(str).str.lower().unique()
     keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
 
     if not keywords_nuevas:
@@ -100,7 +104,7 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
         "Claves para optimizar {kw} en tu negocio"
     ]
 
-    # 3. Clasificar etapa del funnel
+    # 3. Clasificar funnel
     def clasificar_funnel(kw):
         kw = kw.lower()
         if any(x in kw for x in ["qué es", "cómo funciona", "tendencias", "ideas", "ejemplos", "importancia"]):
@@ -112,10 +116,9 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
         else:
             return random.choices(["TOFU", "MOFU", "BOFU"], weights=[50, 30, 20])[0]
 
-    # 4. Canal sugerido según funnel y tipo de keyword
+    # 4. Canal sugerido según funnel y tipo
     def sugerir_canal(kw, funnel):
         kw = kw.lower()
-
         if funnel == "TOFU":
             if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
                 return "Herramienta con IA"
@@ -140,7 +143,7 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
             else:
                 return random.choices(["Email", "Caso de éxito", "Webinar"], weights=[50, 30, 20])[0]
 
-    # 5. Mapeo de clusters por coincidencia textual
+    # 5. Clasificar cluster
     def clasificar_cluster(kw):
         for _, row in df_auditoria.iterrows():
             if isinstance(row['Cluster'], str) and isinstance(row['Sub-cluster (si aplica)'], str):
