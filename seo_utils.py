@@ -1,51 +1,49 @@
 import pandas as pd
 
-# --- FUNCIONES ---
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    # Normalizar nombres de columnas y eliminar espacios
-    df_analisis.columns = df_analisis.columns.str.lower().str.strip()
-    df_auditoria.columns = df_auditoria.columns.str.lower().str.strip()
+    # Normalizar nombres de columnas (solo espacios y minúsculas)
+    df_analisis.columns = df_analisis.columns.str.strip()
+    df_auditoria.columns = df_auditoria.columns.str.strip()
 
-    # Renombrar solo lo necesario para hacer merge y análisis
-    df_auditoria = df_auditoria.rename(columns={
-        "sub-cluster (si aplica)": "subcluster",
-        "leads 90 d": "genera_leads"
-    })
-
-    # Validar que existan columnas requeridas
-    columnas_requeridas_analisis = [
+    # Validación de columnas esperadas en df_analisis (primer archivo)
+    columnas_analisis = [
         "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda",
         "dificultad", "tráfico_estimado", "tipo_de_contenido"
     ]
-    columnas_requeridas_auditoria = [
-        "url", "cluster", "subcluster", "genera_leads"
-    ]
-
-    for col in columnas_requeridas_analisis:
+    for col in columnas_analisis:
         if col not in df_analisis.columns:
             raise ValueError(f"Falta la columna requerida en df_analisis: {col}")
-    for col in columnas_requeridas_auditoria:
+
+    # Validación de columnas esperadas en df_auditoria (segundo archivo)
+    columnas_auditoria = [
+        "URL", "Cluster", "Sub-cluster (si aplica)", "Leads 90 d"
+    ]
+    for col in columnas_auditoria:
         if col not in df_auditoria.columns:
             raise ValueError(f"Falta la columna requerida en df_auditoria: {col}")
 
-    # Unificar URLs
-    df_analisis["url"] = df_analisis["url"].str.strip().str.lower()
-    df_auditoria["url"] = df_auditoria["url"].str.strip().str.lower()
+    # Normalizar URLs para que coincidan
+    df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
+    df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-    # Merge
+    # Renombrar columnas de auditoría SOLO PARA TRABAJO INTERNO
+    df_auditoria = df_auditoria.rename(columns={
+        "URL": "url",
+        "Leads 90 d": "genera_leads",
+        "Sub-cluster (si aplica)": "subcluster",
+    })
+
+    # Combinar ambos DataFrames por la columna 'url'
     df = pd.merge(df_analisis, df_auditoria, on="url", how="inner")
 
-    # Conversión de numéricos
-    columnas_numericas = [
-        "posición_promedio", "volumen_de_búsqueda", "dificultad", "tráfico_estimado"
-    ]
+    # Asegurar que las columnas numéricas estén en formato correcto
+    columnas_numericas = ["posición_promedio", "volumen_de_búsqueda", "dificultad", "tráfico_estimado"]
     for col in columnas_numericas:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Rellenar NaNs de leads
     df["genera_leads"] = pd.to_numeric(df["genera_leads"], errors="coerce").fillna(0)
 
-    # Score de priorización
+    # Calcular score de optimización (puedes ajustar los pesos si lo deseas)
     df["score"] = (
         (1 / (df["posición_promedio"] + 1)) * 0.3 +
         (df["volumen_de_búsqueda"] / df["volumen_de_búsqueda"].max()) * 0.3 +
@@ -54,16 +52,17 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         (df["genera_leads"] > 0).astype(int) * 0.1
     )
 
+    # Filtrar y ordenar por score
     df_resultado = df.sort_values(by="score", ascending=False).head(45)
 
-    # Renombrar columnas solo para mostrar en la tabla final
+    # Renombrar columnas SOLO para visualización
     df_resultado = df_resultado.rename(columns={
         "palabra_clave": "Palabra Clave",
         "volumen_de_búsqueda": "Volumen",
         "tráfico_estimado": "Tráfico",
         "dificultad": "Dificultad",
         "genera_leads": "Genera Leads",
-        "cluster": "Cluster",
+        "Cluster": "Cluster",
         "subcluster": "Subcluster",
         "score": "Score"
     })
