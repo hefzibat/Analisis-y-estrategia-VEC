@@ -36,6 +36,14 @@ if df_keywords is not None and df_auditoria is not None:
         st.dataframe(keywords_sugeridas)
     except Exception as e:
         st.error(f"❌ Error al generar keywords sugeridas: {e}")
-
-else:
-    st.warning("Por favor, sube ambos archivos para continuar.")
+        st.subheader("Paso 3: Cargar archivo opcional de palabras clave externas")
+archivo_keywords_externas = st.file_uploader("Carga aquí un CSV con palabras clave adicionales (1 columna)", type=["csv"], key="keywords_extra")
+df_keywords_externas = None
+if archivo_keywords_externas is not None:
+    try:
+        df_keywords_externas = pd.read_csv(archivo_keywords_externas)
+        if df_keywords_externas.shape[1] != 1:
+            st.error("El archivo de palabras clave externas debe tener solo una columna.")
+            df_keywords_externas = None
+    except Exception as e:
+        st.error(f"Error al cargar el archivo de palabras clave externas: {e}")
