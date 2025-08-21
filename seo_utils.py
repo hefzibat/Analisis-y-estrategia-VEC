@@ -74,21 +74,18 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     import random
     import pandas as pd
 
-    # Asegurar que la columna 'Keyword' exista
-    if "Keyword" not in df_keywords_externas.columns:
-        raise KeyError("El archivo externo debe contener una columna llamada 'Keyword'")
-
     # 1. Unificar y limpiar keywords existentes
     contenidos_existentes = pd.concat([
         df_analisis['palabra_clave'].astype(str).str.lower(),
         df_auditoria['Título'].astype(str).str.lower()
     ], axis=0).unique()
 
+    # CAMBIO: Usar 'Keyword' en lugar de 'palabra_clave'
     nuevas_keywords = df_keywords_externas['Keyword'].dropna().astype(str).str.lower().unique()
     keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
 
     if not keywords_nuevas:
-        return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Funnel", "Canal sugerido", "Cluster", "Subcluster"])
+        return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido", "Cluster", "Subcluster"])
 
     # 2. Plantillas variadas
     plantillas = [
@@ -104,46 +101,25 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
         "Claves para optimizar {kw} en tu negocio"
     ]
 
-    # 3. Clasificar funnel
-    def clasificar_funnel(kw):
+    # 3. Clasificación del canal según intención y objetivo
+    def sugerir_canal(kw):
         kw = kw.lower()
-        if any(x in kw for x in ["qué es", "cómo funciona", "tendencias", "ideas", "ejemplos", "importancia"]):
-            return "TOFU"
-        elif any(x in kw for x in ["guía", "formato", "template", "comparativa", "tipos", "checklist", "beneficios", "ventajas"]):
-            return "MOFU"
-        elif any(x in kw for x in ["proveedor", "cotización", "demo", "caso de éxito", "contratar", "cliente", "precio"]):
-            return "BOFU"
+        if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
+            return "Herramienta con IA"
+        elif any(x in kw for x in ["descargable", "ebook", "guía", "checklist", "manual", "formato", "template", "caso de éxito"]):
+            return "Lead Magnet"
+        elif any(x in kw for x in ["email", "newsletter", "suscriptores", "correos", "embudo"]):
+            return "Email"
+        elif any(x in kw for x in ["formación", "diplomado", "curso", "capacitación", "certificación"]):
+            return random.choice(["Lead Magnet", "Email"])
         else:
-            return random.choices(["TOFU", "MOFU", "BOFU"], weights=[50, 30, 20])[0]
+            return random.choices(
+                ["Blog", "Lead Magnet", "Email", "Herramienta con IA"],
+                weights=[60, 20, 10, 10],
+                k=1
+            )[0]
 
-    # 4. Canal sugerido según funnel y tipo
-    def sugerir_canal(kw, funnel):
-        kw = kw.lower()
-        if funnel == "TOFU":
-            if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
-                return "Herramienta con IA"
-            elif any(x in kw for x in ["blog", "tendencias", "qué es", "cómo funciona", "ejemplos"]):
-                return "Blog"
-            else:
-                return random.choices(["Blog", "Herramienta con IA"], weights=[80, 20])[0]
-
-        elif funnel == "MOFU":
-            if any(x in kw for x in ["descargable", "ebook", "guía", "checklist", "manual", "formato", "template", "caso de éxito"]):
-                return "Lead Magnet"
-            else:
-                return random.choices(["Lead Magnet", "Blog", "Email"], weights=[60, 30, 10])[0]
-
-        elif funnel == "BOFU":
-            if any(x in kw for x in ["email", "newsletter", "suscriptores", "correos", "embudo"]):
-                return "Email"
-            elif any(x in kw for x in ["caso de éxito", "cliente", "testimonio"]):
-                return "Caso de éxito"
-            elif any(x in kw for x in ["demo", "webinar", "cotización", "proveedor"]):
-                return "Webinar"
-            else:
-                return random.choices(["Email", "Caso de éxito", "Webinar"], weights=[50, 30, 20])[0]
-
-    # 5. Clasificar cluster
+    # 4. Mapeo de clusters por coincidencia textual
     def clasificar_cluster(kw):
         for _, row in df_auditoria.iterrows():
             if isinstance(row['Cluster'], str) and isinstance(row['Sub-cluster (si aplica)'], str):
@@ -151,22 +127,20 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
                     return row['Cluster'], row['Sub-cluster (si aplica)']
         return "Otros", "Otros"
 
-    # 6. Resultados
+    # 5. Resultados
     resultados = []
     for kw in keywords_nuevas:
         plantilla = random.choice(plantillas)
         titulo = plantilla.format(kw=kw)
-        funnel = clasificar_funnel(kw)
-        canal = sugerir_canal(kw, funnel)
+        canal = sugerir_canal(kw)
         cluster, subcluster = clasificar_cluster(kw)
 
         resultados.append({
             "Palabra clave": kw,
             "Título sugerido": titulo,
-            "Funnel": funnel,
-            "Canal sugerido": canal,
             "Cluster": cluster,
-            "Subcluster": subcluster
+            "Subcluster": subcluster,
+            "Canal sugerido": canal
         })
 
     return pd.DataFrame(resultados)
