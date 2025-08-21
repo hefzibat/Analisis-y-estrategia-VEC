@@ -41,11 +41,8 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
 def generar_keywords_por_cluster(df_analisis, df_auditoria, top_n=5):
     resultados = []
 
-    # Normalizar columnas
-    df_auditoria.columns = [col.lower().strip() for col in df_auditoria.columns]
-    df_analisis.columns = [col.lower().strip() for col in df_analisis.columns]
-
-    # Agrupar por cluster y subcluster
+    # No cambiar nombres de columnas: se trabaja tal cual
+    # Agrupar por cluster, subcluster y funnel (respetando nombres exactos)
     agrupado = df_auditoria.groupby(['cluster', 'sub-cluster (si aplica)', 'funnel'])
 
     for (cluster, subcluster, funnel), grupo in agrupado:
