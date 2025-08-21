@@ -72,22 +72,26 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     return df_resultado[columnas_finales]
     
 def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
-    import random
-    import pandas as pd
-
-    # 1. Unificar y limpiar keywords existentes
+    # Unificar keywords internas ya existentes
     contenidos_existentes = pd.concat([
         df_analisis['palabra_clave'].astype(str).str.lower(),
         df_auditoria['Título'].astype(str).str.lower()
     ], axis=0).unique()
 
+    # Limpiar nuevas keywords
     nuevas_keywords = df_keywords_externas['palabra_clave'].dropna().astype(str).str.lower().unique()
     keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
 
     if not keywords_nuevas:
         return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido", "Cluster", "Subcluster"])
 
-    # 2. Plantillas variadas
+    # Crear un mapa de cluster y subcluster usando keywords internas
+    mapa_keywords = df_analisis[['palabra_clave']].copy()
+    mapa_keywords['cluster'] = df_auditoria.set_index('URL').loc[df_analisis['url']]['Cluster'].values
+    mapa_keywords['subcluster'] = df_auditoria.set_index('URL').loc[df_analisis['url']]['Sub-cluster (si aplica)'].values
+    mapa_keywords['palabra_clave'] = mapa_keywords['palabra_clave'].str.lower()
+
+    # Crear plantillas para títulos
     plantillas = [
         "Cómo implementar {kw} en tu empresa",
         "Guía esencial para entender {kw}",
@@ -101,40 +105,36 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
         "Claves para optimizar {kw} en tu negocio"
     ]
 
-    # 3. Clasificación del canal según intención y objetivo
+    # Canal sugerido según tipo de keyword + objetivo de conversión
     def sugerir_canal(kw):
         kw = kw.lower()
         if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
             return "Herramienta con IA"
-        elif any(x in kw for x in ["descargable", "ebook", "guía", "checklist", "manual", "formato", "template", "caso de éxito"]):
+        elif any(x in kw for x in ["ebook", "guía", "checklist", "manual", "tips", "educación", "curso"]):
             return "Lead Magnet"
-        elif any(x in kw for x in ["email", "newsletter", "suscriptores", "correos", "embudo"]):
+        elif any(x in kw for x in ["email", "newsletter", "suscriptores", "correos"]):
             return "Email"
-        elif any(x in kw for x in ["formación", "diplomado", "curso", "capacitación", "certificación"]):
-            return random.choice(["Lead Magnet", "Email"])
         else:
-            # Distribución pensada en objetivos: 60% blog, 20% lead magnet, 10% email, 10% herramienta IA
             return random.choices(
                 ["Blog", "Lead Magnet", "Email", "Herramienta con IA"],
                 weights=[60, 20, 10, 10],
                 k=1
             )[0]
 
-    # 4. Mapeo de clusters por coincidencia textual
-    def clasificar_cluster(kw):
-        for _, row in df_auditoria.iterrows():
-            if isinstance(row['Cluster'], str) and isinstance(row['Sub-cluster (si aplica)'], str):
-                if row['Cluster'].lower() in kw or row['Sub-cluster (si aplica)'].lower() in kw:
-                    return row['Cluster'], row['Sub-cluster (si aplica)']
-        return "Otros", "Otros"
-
-    # 5. Resultados
     resultados = []
     for kw in keywords_nuevas:
         plantilla = random.choice(plantillas)
         titulo = plantilla.format(kw=kw)
         canal = sugerir_canal(kw)
-        cluster, subcluster = clasificar_cluster(kw)
+
+        # Buscar cluster y subcluster similar en keywords internas
+        coincidencias = mapa_keywords[mapa_keywords['palabra_clave'].str.contains(kw.split()[0])]
+        if not coincidencias.empty:
+            cluster = coincidencias['cluster'].mode().values[0]
+            subcluster = coincidencias['subcluster'].mode().values[0]
+        else:
+            cluster = "Negocios & Finanzas"
+            subcluster = "General"
 
         resultados.append({
             "Palabra clave": kw,
