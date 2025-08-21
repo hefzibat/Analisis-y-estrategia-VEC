@@ -52,9 +52,11 @@ if archivo_analisis and archivo_auditoria:
         st.download_button(
             label="Descargar resultados en Excel",
             data=generar_excel(),
-            file_name="estrategia_contenidos.xlsx",
+            file_name="resultados_estrategia_contenidos.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
     except Exception as e:
         st.error(f"Ocurrió un error al procesar los archivos: {e}")
+else:
+    st.warning("Por favor carga ambos archivos para iniciar el análisis.")
