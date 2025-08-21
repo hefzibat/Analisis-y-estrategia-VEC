@@ -10,46 +10,8 @@ try:
 except LookupError:
     nltk.download('stopwords')
 
-# Descargar stopwords si no están ya disponibles
-nltk.download('stopwords')
 
-def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
-    try:
-        df_keywords = df_keywords.copy()
-        df_auditoria = df_auditoria.copy()
-
-        df_auditoria = df_auditoria.rename(columns={
-            'URL': 'url',
-            'Leads 90 d': 'genera_leads'
-        })
-
-        df = pd.merge(df_keywords, df_auditoria, how='left', on='url')
-
-        columnas_numericas = ['posición_promedio', 'volumen_de_búsqueda', 'tráfico_estimado', 'dificultad', 'genera_leads']
-        for col in columnas_numericas:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        df = df.dropna(subset=columnas_numericas)
-
-        df['score'] = (
-            (10 - df['posición_promedio']) * 0.25 +
-            df['volumen_de_búsqueda'] * 0.15 +
-            df['tráfico_estimado'] * 0.3 +
-            (10 - df['dificultad']) * 0.2 +
-            df['genera_leads'] * 0.1
-        )
-
-        df = df.sort_values(by='score', ascending=False)
-        columnas = ['url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda',
-                    'dificultad', 'tráfico_estimado', 'genera_leads', 'score', 'Cluster', 'Sub-cluster (si aplica)']
-        columnas_presentes = [col for col in columnas if col in df.columns]
-        return df[columnas_presentes]
-
-    except Exception as e:
-        raise ValueError(f"Error en filtrado: {str(e)}")
-
-
-def generar_keywords_por_cluster(df_keywords, df_auditoria, archivo_keywords_externas=None):
+def generar_keywords_por_cluster(df_keywords, df_auditoria, df_externas=None):
     try:
         df_keywords = df_keywords.copy()
         df_auditoria = df_auditoria.copy()
@@ -61,6 +23,22 @@ def generar_keywords_por_cluster(df_keywords, df_auditoria, archivo_keywords_ext
         df = pd.merge(df_keywords, df_auditoria[['url', 'Cluster', 'Sub-cluster (si aplica)']], on='url', how='left')
         df.dropna(subset=['Cluster'], inplace=True)
 
+        if df_externas is not None:
+            df_externas = df_externas.copy()
+            if 'palabra_clave' in df_externas.columns and 'Cluster' in df_externas.columns:
+                df_externas['Sub-cluster (si aplica)'] = df_externas.get('Sub-cluster (si aplica)', '')
+                df_externas['Fuente'] = 'externa'
+                df['Fuente'] = 'interna'
+                df = pd.concat([
+                    df[['palabra_clave', 'Cluster', 'Sub-cluster (si aplica)', 'Fuente']],
+                    df_externas[['palabra_clave', 'Cluster', 'Sub-cluster (si aplica)', 'Fuente']]
+                ], ignore_index=True)
+            else:
+                raise ValueError("El archivo de keywords externas debe tener las columnas 'palabra_clave' y 'Cluster'")
+
+        else:
+            df['Fuente'] = 'interna'
+
         resultados = []
 
         for (cluster, subcluster), grupo in df.groupby(['Cluster', 'Sub-cluster (si aplica)']):
@@ -68,12 +46,8 @@ def generar_keywords_por_cluster(df_keywords, df_auditoria, archivo_keywords_ext
             if len(corpus) < 2:
                 continue
 
-            vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2), max_features=20)
+            vectorizer = TfidfVectorizer(stop_words=None, ngram_range=(1, 2), max_features=20)
             X = vectorizer.fit_transform(corpus)
-
-            n_clusters = min(3, len(corpus))
-            kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
-            kmeans.fit(X)
 
             top_keywords = vectorizer.get_feature_names_out()
 
