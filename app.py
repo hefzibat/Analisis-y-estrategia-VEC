@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from seo_utils import filtrar_contenidos_con_potencial, generar_ideas_desde_keywords_externas
+from seo_utils import generar_ideas_desde_keywords_externas
 
 st.title("🔍 Análisis y estrategia de contenido SEO")
 
@@ -37,39 +37,42 @@ if archivo_analisis and archivo_auditoria:
     except Exception as e:
         st.error(f"❌ Error: {e}")
         
-# PARTE 2 - Generación de ideas desde keywords externas
-st.markdown("---")
-st.subheader("🔎 Parte 2: Generación de nuevas ideas de contenido")
+# --- SECCIÓN PARTE 2: IDEAS NUEVAS DESDE ARCHIVO EXTERNO ---
+st.header("🔍 Parte 2: Ideas nuevas de contenido desde keywords externas")
 
-archivo_keywords = st.file_uploader("📂 Sube el archivo con palabras clave externas (Google Ads, Semrush, etc)", type=["csv", "xlsx"])
+# Subir archivo de palabras clave externas
+archivo_keywords_externas = st.file_uploader("📂 Sube el archivo de keywords externas (Google Ads / Semrush)", type=["csv", "xlsx"])
 
-if archivo_keywords is not None:
-    if 'df_contenidos_actuales' in st.session_state and 'df_auditoria' in st.session_state:
-        try:
-            if archivo_keywords.name.endswith(".csv"):
-                df_keywords_externas = pd.read_csv(archivo_keywords)
-            else:
-                df_keywords_externas = pd.read_excel(archivo_keywords)
+if archivo_keywords_externas is not None:
+    try:
+        if archivo_keywords_externas.name.endswith('.csv'):
+            df_keywords_externas = pd.read_csv(archivo_keywords_externas)
+        else:
+            df_keywords_externas = pd.read_excel(archivo_keywords_externas)
 
-            # ✅ CORREGIDO: orden correcto de argumentos
-            nuevas_ideas_df = generar_ideas_desde_keywords_externas(
-                archivo_keywords,
-                st.session_state['df_contenidos_actuales'],
-                st.session_state['df_auditoria']
-            )
+        # Verifica si ya se cargaron las otras dos partes (contenidos actuales y auditoría)
+        if 'df_contenidos_actuales' in st.session_state and 'df_auditoria' in st.session_state:
+            with st.spinner("🔄 Generando ideas nuevas de contenido..."):
+                df_ideas_nuevas = generar_ideas_desde_keywords_externas(
+                    st.session_state['df_contenidos_actuales'],
+                    df_keywords_externas,
+                    st.session_state['df_auditoria']
+                )
+            st.success("✅ Ideas nuevas generadas exitosamente")
 
-            st.success("✅ Ideas de contenido generadas correctamente.")
-            st.dataframe(nuevas_ideas_df)
+            st.subheader("📊 Ideas nuevas sugeridas")
+            st.dataframe(df_ideas_nuevas)
 
             # Botón para descargar
-            csv_ideas = nuevas_ideas_df.to_csv(index=False).encode('utf-8')
+            csv_ideas = df_ideas_nuevas.to_csv(index=False).encode("utf-8")
             st.download_button(
-                label="⬇️ Descargar ideas nuevas en CSV",
+                label="📥 Descargar ideas nuevas en CSV",
                 data=csv_ideas,
-                file_name="ideas_contenido_nuevas.csv",
+                file_name="ideas_nuevas_desde_keywords_externas.csv",
                 mime="text/csv"
             )
-        except Exception as e:
-            st.error(f"⚠️ Error al generar ideas nuevas: {e}")
-    else:
-        st.warning("⚠️ Primero debes ejecutar la Parte 1 para tener los contenidos actuales.")
+        else:
+            st.warning("⚠️ Carga primero los archivos de análisis y auditoría en la Parte 1.")
+
+    except Exception as e:
+        st.error(f"⚠️ Error al generar ideas nuevas: {e}")
