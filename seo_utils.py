@@ -71,8 +71,8 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     ]
     return df_resultado[columnas_finales]
     
-def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
-    # Normalizar y unificar columnas
+ef generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
+    # Unificar y limpiar keywords existentes
     contenidos_existentes = pd.concat([
         df_analisis['palabra_clave'].astype(str).str.lower(),
         df_auditoria['Título'].astype(str).str.lower()
@@ -82,38 +82,49 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
 
     if not keywords_nuevas:
-        return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido"])
+        return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido", "Cluster", "Subcluster"])
 
-    # Plantillas variadas para títulos
+    # Plantillas variadas
     plantillas = [
-        "Cómo lograr {kw} en tu negocio",
-        "Guía práctica para dominar {kw}",
-        "¿Estás aprovechando {kw} como deberías?",
-        "Estrategias efectivas para mejorar en {kw}",
-        "Qué es {kw} y cómo implementarlo con éxito",
+        "Cómo implementar {kw} en tu empresa",
+        "Guía esencial para entender {kw}",
+        "Qué es {kw} y cómo usarlo con éxito",
+        "Tácticas efectivas para aplicar {kw}",
+        "Estrategia práctica para dominar {kw}",
+        "Checklist para mejorar en {kw}",
         "Errores comunes al aplicar {kw} (y cómo evitarlos)",
-        "Checklist para optimizar {kw} desde hoy"
+        "Cómo usar {kw} para impulsar tus resultados",
+        "¿Estás aprovechando {kw} como deberías?",
+        "Claves para optimizar {kw} en tu negocio"
     ]
 
     def sugerir_canal(kw):
         kw = kw.lower()
         if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
             return "Herramienta con IA"
-        elif any(x in kw for x in ["ebook", "guía", "descargable", "checklist", "manual"]):
+        elif any(x in kw for x in ["ebook", "guía", "checklist", "manual", "tips", "educación", "curso"]):
             return "Lead Magnet"
-        elif any(x in kw for x in ["email", "newsletter", "correos", "suscriptores"]):
+        elif any(x in kw for x in ["email", "newsletter", "suscriptores", "correos"]):
             return "Email"
         else:
-            return "Blog"
+            # 60% blog, 20% lead magnet, 10% email, 10% herramienta IA
+            return random.choices(
+                ["Blog", "Lead Magnet", "Email", "Herramienta con IA"],
+                weights=[60, 20, 10, 10],
+                k=1
+            )[0]
 
     resultados = []
     for kw in keywords_nuevas:
         plantilla = random.choice(plantillas)
         titulo = plantilla.format(kw=kw)
         canal = sugerir_canal(kw)
+
         resultados.append({
             "Palabra clave": kw,
             "Título sugerido": titulo,
+            "Cluster": "Negocios & Finanzas",       # si quieres usar otros, podemos mapear
+            "Subcluster": "Finanzas & Mercados",    # podemos mapear por keyword
             "Canal sugerido": canal
         })
 
