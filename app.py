@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from seo_utils import generar_ideas_desde_keywords_externas
+from seo_utils import filtrar_contenidos_con_potencial
 
 st.title("🔍 Análisis y estrategia de contenido SEO")
 
@@ -27,35 +27,8 @@ if archivo_analisis and archivo_auditoria:
 
         resultado = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
 
-        # ✅ Guardar los datos en session_state
-        st.session_state['df_contenidos_actuales'] = resultado
-        st.session_state['df_auditoria'] = df_auditoria
-
         st.success("✅ Análisis completado")
         st.dataframe(resultado)
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
-        
-# PARTE 2: Ideas de contenido con palabras clave externas
-st.subheader("Parte 2: Ideas nuevas a partir de palabras clave externas")
-
-archivo_keywords = st.file_uploader("Carga el archivo de palabras clave externas (AdWords)", type=["csv", "xlsx"])
-
-if archivo_keywords is not None:
-    try:
-        if archivo_keywords.name.endswith(".csv"):
-            df_keywords = pd.read_csv(archivo_keywords)
-        else:
-            df_keywords = pd.read_excel(archivo_keywords)
-        
-        st.success("Archivo de palabras clave cargado correctamente.")
-
-        # Llama a la función con 3 argumentos
-        df_ideas = generar_ideas_desde_keywords_externas(df_keywords, df_analisis, df_auditoria)
-
-        st.write("Ideas nuevas de contenido basadas en las keywords externas:")
-        st.dataframe(df_ideas)
-
-    except Exception as e:
-        st.error(f"⚠️ Error al generar ideas nuevas: {e}")
