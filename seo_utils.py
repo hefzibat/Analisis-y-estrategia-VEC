@@ -73,7 +73,7 @@ def generar_keywords_por_cluster(df_analisis, df_auditoria, top_n=5):
         for palabra, score in ranking:
             resultados.append({
                 'cluster': cluster,
-                'subcluster': subcluster,
+                'sub-cluster (si aplica)': subcluster,
                 'palabra_clave_sugerida': palabra,
                 'funnel': funnel
             })
