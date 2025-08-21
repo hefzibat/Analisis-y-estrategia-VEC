@@ -1,96 +1,65 @@
 import streamlit as st
 import pandas as pd
-from seo_utils import generar_keywords_por_cluster
+import os
+from seo_utils import generar_keywords_por_cluster, fusionar_keywords
 
-st.set_page_config(page_title="Análisis SEO por Clúster", layout="wide")
-st.title("🔍 Análisis SEO por Clúster y Sugerencia de Keywords")
+st.set_page_config(layout="wide")
 
-st.markdown("""
-Esta aplicación permite:
-1. Analizar y priorizar contenidos existentes para optimización.
-2. Generar nuevas palabras clave agrupadas por cluster y subcluster.
-3. Combinar sugerencias internas y externas para plan de contenido.
-""")
+st.title("🔍 Análisis SEO y Generación de Keywords por Clúster")
 
-# -------------------------
-# Carga de archivos
-# -------------------------
-st.sidebar.header("📁 Cargar archivos de entrada")
-archivo_keywords = st.sidebar.file_uploader("Archivo de análisis de keywords (.csv o .xlsx)", type=["csv", "xlsx"])
-archivo_auditoria = st.sidebar.file_uploader("Archivo de auditoría de contenidos (.csv o .xlsx)", type=["csv", "xlsx"])
+st.header("📁 Parte 1: Carga de archivos internos")
 
-if archivo_keywords and archivo_auditoria:
+file_keywords = st.file_uploader("Carga el archivo de análisis interno (CSV o Excel)", type=["csv", "xlsx"], key="keywords")
+file_auditoria = st.file_uploader("Carga el archivo de auditoría interna (CSV o Excel)", type=["csv", "xlsx"], key="auditoria")
+
+df_keywords = None
+df_auditoria = None
+
+if file_keywords:
     try:
-        if archivo_keywords.name.endswith('.csv'):
-            df_keywords = pd.read_csv(archivo_keywords)
-        else:
-            df_keywords = pd.read_excel(archivo_keywords)
-
-        if archivo_auditoria.name.endswith('.csv'):
-            df_auditoria = pd.read_csv(archivo_auditoria)
-        else:
-            df_auditoria = pd.read_excel(archivo_auditoria)
-
-        st.success("Archivos cargados correctamente.")
+        df_keywords = pd.read_csv(file_keywords) if file_keywords.name.endswith(".csv") else pd.read_excel(file_keywords)
+        st.success("Archivo de análisis cargado correctamente.")
     except Exception as e:
-        st.error(f"Error al cargar archivos: {str(e)}")
-        st.stop()
-else:
-    st.info("Por favor, carga ambos archivos para comenzar.")
-    st.stop()
+        st.error(f"Error al leer el archivo de análisis: {e}")
 
-# -------------------------
-# Parte 1: Identificar contenidos a optimizar
-# -------------------------
-st.subheader("Parte 1: Identificar contenidos con potencial de optimización")
+if file_auditoria:
+    try:
+        df_auditoria = pd.read_csv(file_auditoria) if file_auditoria.name.endswith(".csv") else pd.read_excel(file_auditoria)
+        st.success("Archivo de auditoría cargado correctamente.")
+    except Exception as e:
+        st.error(f"Error al leer el archivo de auditoría: {e}")
 
-try:
-    df_merged = pd.merge(
-        df_keywords,
-        df_auditoria.rename(columns={'URL': 'url'}),
-        on='url',
-        how='left'
-    )
+st.header("📁 Parte 2: Carga de keywords externas (opcional)")
 
-    df_merged['score_optimizacion'] = (
-        df_merged['tráfico_estimado'].fillna(0) * 0.4 +
-        df_merged['volumen_de_búsqueda'].fillna(0) * 0.3 +
-        df_merged['posición_promedio'].rsub(100).fillna(0) * 0.2 +
-        df_merged['leads 90 d'].fillna(0) * 0.1
-    )
-
-    df_top = df_merged.sort_values(by='score_optimizacion', ascending=False).head(40)
-
-    st.markdown("### 📝 Contenidos prioritarios para optimizar")
-    st.dataframe(df_top[[
-        'url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda',
-        'dificultad', 'tráfico_estimado', 'leads 90 d', 'Cluster',
-        'Sub-cluster (si aplica)', 'tipo_de_contenido'
-    ]])
-except Exception as e:
-    st.error(f"❌ Error en Parte 1: {str(e)}")
-
-# -------------------------
-# Parte 2: Generar nuevas palabras clave
-# -------------------------
-st.subheader("Parte 2: Generar nuevas palabras clave")
-archivo_externo = st.file_uploader("Cargar archivo de palabras clave externas (opcional)", type=["csv", "xlsx"])
+file_externas = st.file_uploader("Carga el archivo externo (CSV o Excel) con keywords", type=["csv", "xlsx"], key="externas")
 
 df_externas = None
-if archivo_externo is not None:
-    try:
-        if archivo_externo.name.endswith('.csv'):
-            df_externas = pd.read_csv(archivo_externo)
-        else:
-            df_externas = pd.read_excel(archivo_externo)
-        st.success("Archivo de palabras clave externas cargado con éxito.")
-    except Exception as e:
-        st.error(f"Error al cargar archivo externo: {str(e)}")
 
-if st.button("Generar palabras clave sugeridas"):
+if file_externas:
     try:
-        resultados_keywords = generar_keywords_por_cluster(df_keywords, df_auditoria, df_externas)
-        st.success("Palabras clave sugeridas generadas exitosamente.")
-        st.dataframe(resultados_keywords)
+        df_externas = pd.read_csv(file_externas) if file_externas.name.endswith(".csv") else pd.read_excel(file_externas)
+        if df_externas.shape[1] == 0:
+            st.warning("El archivo está vacío.")
+        elif df_externas.shape[1] == 1:
+            st.success("Archivo externo cargado correctamente.")
+        else:
+            st.info("Archivo externo cargado con múltiples columnas. Se usará la primera para las keywords.")
     except Exception as e:
-        st.error(f"❌ Error al generar keywords sugeridas: {str(e)}")
+        st.error(f"Error al leer el archivo externo: {e}")
+
+st.header("🚀 Generar Keywords por Clúster")
+
+if df_keywords is not None and df_auditoria is not None:
+    if df_externas is not None:
+        df_fusionado = fusionar_keywords(df_keywords[['url', 'palabra_clave']], df_externas)
+        df_final = pd.merge(df_fusionado, df_auditoria[['URL', 'Cluster', 'Sub-cluster (si aplica)']], left_on='url', right_on='URL', how='left')
+        df_final.dropna(subset=['Cluster'], inplace=True)
+        resultados = generar_keywords_por_cluster(df_final, df_auditoria)
+    else:
+        resultados = generar_keywords_por_cluster(df_keywords, df_auditoria)
+
+    if resultados is not None and not resultados.empty:
+        st.success("✅ Keywords sugeridas generadas.")
+        st.dataframe(resultados)
+    else:
+        st.warning("No se generaron keywords sugeridas.")
