@@ -15,6 +15,9 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda",
         "dificultad", "tráfico_estimado", "tipo_de_contenido"
     ]
+        print("\n📌 Columnas exactas en df_auditoria (con índices):")
+    for idx, col in enumerate(df_auditoria.columns):
+        print(f"{idx}: '{col}' → length: {len(col)}")
     for col in columnas_analisis:
         if col not in df_analisis.columns:
             raise ValueError(f"❌ Falta la columna requerida en df_analisis: {col}")
