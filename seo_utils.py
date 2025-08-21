@@ -73,48 +73,49 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     return df_resultado[columnas_finales]
 
 def generar_keywords_por_cluster(df, top_n=10):
-    """
-    Genera nuevas palabras clave usando TF-IDF, agrupadas por cluster y subcluster.
-    También asigna etapa del funnel según el tipo de contenido.
-    """
     resultado = []
 
-    if df.isnull().any().any():
-        df = df.dropna(subset=['palabra_clave', 'cluster', 'subcluster'])
+    # Validar columnas necesarias con nombres reales
+    columnas_necesarias = ["palabra_clave", "Cluster", "Sub-cluster (si aplica)", "tipo_de_contenido"]
+    for col in columnas_necesarias:
+        if col not in df.columns:
+            raise ValueError(f"Falta la columna requerida: {col}")
 
-    agrupado = df.groupby(['cluster', 'subcluster'])
+    df = df.dropna(subset=["palabra_clave", "Cluster", "Sub-cluster (si aplica)"])
+
+    agrupado = df.groupby(["Cluster", "Sub-cluster (si aplica)"])
 
     for (cluster, subcluster), grupo in agrupado:
-        corpus = grupo['palabra_clave'].dropna().astype(str).tolist()
+        corpus = grupo["palabra_clave"].dropna().astype(str).tolist()
         if not corpus:
             continue
 
-        vectorizer = TfidfVectorizer(stop_words='spanish')
+        vectorizer = TfidfVectorizer(stop_words="spanish")
         X = vectorizer.fit_transform(corpus)
-        X_norm = normalize(X, norm='l1', axis=1)
+        X_norm = normalize(X, norm="l1", axis=1)
         tfidf_scores = X_norm.sum(axis=0).A1
         vocabulario = vectorizer.get_feature_names_out()
         ranking = sorted(zip(vocabulario, tfidf_scores), key=lambda x: x[1], reverse=True)
 
-        funnel = grupo['tipo_de_contenido'].mode().iloc[0] if 'tipo_de_contenido' in grupo else 'desconocido'
+        funnel = grupo["tipo_de_contenido"].mode().iloc[0] if "tipo_de_contenido" in grupo else "desconocido"
         funnel = _mapear_funnel(funnel)
 
         for palabra, score in ranking[:top_n]:
             resultado.append({
-                'cluster': cluster,
-                'subcluster': subcluster,
-                'palabra_clave_sugerida': palabra,
-                'funnel': funnel
+                "Cluster": cluster,
+                "Sub-cluster (si aplica)": subcluster,
+                "palabra_clave_sugerida": palabra,
+                "funnel": funnel
             })
 
     return pd.DataFrame(resultado)
 
 def _mapear_funnel(tipo):
     tipo = tipo.lower()
-    if any(x in tipo for x in ['ebook', 'infografía', 'blog']):
-        return 'ToFu'
-    elif any(x in tipo for x in ['caso', 'webinar', 'checklist']):
-        return 'MoFu'
-    elif any(x in tipo for x in ['demo', 'servicio', 'cotización']):
-        return 'BoFu'
-    return 'desconocido'
+    if any(x in tipo for x in ["ebook", "infografía", "blog"]):
+        return "ToFu"
+    elif any(x in tipo for x in ["caso", "webinar", "checklist"]):
+        return "MoFu"
+    elif any(x in tipo for x in ["demo", "servicio", "cotización"]):
+        return "BoFu"
+    return "desconocido"
