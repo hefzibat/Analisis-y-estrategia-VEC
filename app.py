@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from seo_utils import filtrar_contenidos_con_potencial
+from seo_utils import filtrar_contenidos_con_potencial, generar_ideas_desde_keywords_externas
 
 st.title("🔍 Análisis y estrategia de contenido SEO")
 
@@ -27,6 +27,10 @@ if archivo_analisis and archivo_auditoria:
 
         resultado = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
 
+        # ✅ Guardar los datos en session_state
+        st.session_state['df_contenidos_actuales'] = resultado
+        st.session_state['df_auditoria'] = df_auditoria
+
         st.success("✅ Análisis completado")
         st.dataframe(resultado)
 
@@ -40,9 +44,19 @@ st.subheader("🔎 Parte 2: Generación de nuevas ideas de contenido")
 archivo_keywords = st.file_uploader("📂 Sube el archivo con palabras clave externas (Google Ads, Semrush, etc)", type=["csv", "xlsx"])
 
 if archivo_keywords is not None:
-    if 'contenidos_actuales' in locals():
+    if 'df_contenidos_actuales' in st.session_state and 'df_auditoria' in st.session_state:
         try:
-            nuevas_ideas_df = generar_ideas_desde_keywords_externas(archivo_keywords, contenidos_actuales)
+            if archivo_keywords.name.endswith(".csv"):
+                df_keywords_externas = pd.read_csv(archivo_keywords)
+            else:
+                df_keywords_externas = pd.read_excel(archivo_keywords)
+
+            nuevas_ideas_df = generar_ideas_desde_keywords_externas(
+                st.session_state['df_contenidos_actuales'],
+                df_keywords_externas,
+                st.session_state['df_auditoria']
+            )
+
             st.success("✅ Ideas de contenido generadas correctamente.")
             st.dataframe(nuevas_ideas_df)
 
