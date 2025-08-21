@@ -1,17 +1,14 @@
 import pandas as pd
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    # Mostrar columnas originales antes de limpiar
-    print("📎 Columnas originales en df_analisis:", df_analisis.columns.tolist())
-    print("📎 Columnas originales en df_auditoria:", df_auditoria.columns.tolist())
-
-    # Limpiar espacios en nombres de columnas
+    # Limpiar nombres de columnas
     df_analisis.columns = df_analisis.columns.str.strip()
     df_auditoria.columns = df_auditoria.columns.str.strip()
 
-    # Mostrar columnas después de limpiar
-    print("🧼 Columnas en df_analisis (tras limpiar):", df_analisis.columns.tolist())
-    print("🧼 Columnas en df_auditoria (tras limpiar):", df_auditoria.columns.tolist())
+    # 👇 DEBUG: Mostrar las columnas de auditoría para verificar el nombre real de 'Cluster'
+    print("🎯 Columnas detectadas en df_auditoria:")
+    for col in df_auditoria.columns:
+        print(f"- '{col}'")
 
     # Validar columnas necesarias en archivo de análisis
     columnas_analisis = [
@@ -34,13 +31,13 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
     df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-    # Renombrar columnas para merge
+    # Renombrar solo columnas necesarias para merge
     df_auditoria_renombrado = df_auditoria.rename(columns={
         "URL": "url",
         "Leads 90 d": "genera_leads"
     })
 
-    # Conservar columnas necesarias
+    # Conservar columnas necesarias después del merge
     columnas_utiles = ["url", "Cluster", "Sub-cluster (si aplica)", "genera_leads"]
     df_auditoria_renombrado = df_auditoria_renombrado[columnas_utiles]
 
@@ -65,7 +62,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
 
     df_resultado = df.sort_values(by="score", ascending=False).head(45)
 
-    # Renombrar columnas para visualización
+    # Renombrar columnas solo para visualización
     df_resultado = df_resultado.rename(columns={
         "palabra_clave": "Palabra Clave",
         "volumen_de_búsqueda": "Volumen",
@@ -75,9 +72,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         "score": "Score"
     })
 
-    # Mostrar columnas finales antes de return
-    print("📤 Columnas en df_resultado:", df_resultado.columns.tolist())
-
+    # Preparar columnas finales (solo si existen)
     columnas_finales = [
         "url", "Palabra Clave", "Cluster", "Sub-cluster (si aplica)",
         "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
