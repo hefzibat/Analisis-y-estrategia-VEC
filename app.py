@@ -1,45 +1,76 @@
-import streamlit as st
+# seo_utils.py
+
 import pandas as pd
-from seo_utils import filtrar_contenidos_con_potencial
 
-st.set_page_config(layout="wide")
+def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
+    # Limpiar nombres de columnas
+    df_analisis.columns = df_analisis.columns.str.strip()
+    df_auditoria.columns = df_auditoria.columns.str.strip()
 
-st.title("🔍 Análisis de Contenidos SEO con Potencial de Optimización")
+    print("\n📌 Columnas exactas en df_auditoria:")
+    for idx, col in enumerate(df_auditoria.columns):
+        print(f"{idx}: '{col}' → length: {len(col)}")
 
-st.markdown("Carga los dos archivos para comenzar:")
+    # Validar columnas necesarias
+    columnas_analisis = [
+        "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda",
+        "dificultad", "tráfico_estimado", "tipo_de_contenido"
+    ]
+    for col in columnas_analisis:
+        if col not in df_analisis.columns:
+            raise ValueError(f"Falta la columna requerida en df_analisis: {col}")
 
-archivo_analisis = st.file_uploader("📄 Archivo de análisis (ej: posiciones, tráfico, volumen)", type=["xlsx", "csv"])
-archivo_auditoria = st.file_uploader("📄 Archivo de auditoría (ej: leads, clústers, etc.)", type=["xlsx", "csv"])
+    columnas_auditoria = [
+        "URL", "Cluster", "Sub-cluster (si aplica)", "Leads 90 d"
+    ]
+    for col in columnas_auditoria:
+        if col not in df_auditoria.columns:
+            raise ValueError(f"Falta la columna requerida en df_auditoria: {col}")
 
-if archivo_analisis and archivo_auditoria:
-    try:
-        # Detectar extensión y cargar
-        if archivo_analisis.name.endswith(".xlsx"):
-            df_analisis = pd.read_excel(archivo_analisis)
-        else:
-            df_analisis = pd.read_csv(archivo_analisis)
+    # Homologar y renombrar
+    df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
+    df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-        if archivo_auditoria.name.endswith(".xlsx"):
-            df_auditoria = pd.read_excel(archivo_auditoria)
-        else:
-            df_auditoria = pd.read_csv(archivo_auditoria)
+    df_auditoria_renombrado = df_auditoria.rename(columns={
+        "URL": "url",
+        "Leads 90 d": "genera_leads"
+    })
 
-        # Aplicar análisis
-        df_resultado = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
+    columnas_utiles = ["url", "Cluster", "Sub-cluster (si aplica)", "genera_leads"]
+    df_auditoria_renombrado = df_auditoria_renombrado[columnas_utiles]
 
-        st.success("✅ Análisis completado. Aquí están los contenidos con mayor potencial de optimización:")
-        st.dataframe(df_resultado, use_container_width=True)
+    # Merge
+    df = pd.merge(df_analisis, df_auditoria_renombrado, on="url", how="inner")
 
-        # Opción de descarga
-        csv = df_resultado.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="⬇️ Descargar resultados como CSV",
-            data=csv,
-            file_name="contenidos_con_potencial.csv",
-            mime="text/csv",
-        )
+    columnas_numericas = ["posición_promedio", "volumen_de_búsqueda", "dificultad", "tráfico_estimado"]
+    for col in columnas_numericas:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
-else:
-    st.info("👈 Sube ambos archivos para iniciar el análisis.")
+    df["genera_leads"] = pd.to_numeric(df["genera_leads"], errors="coerce").fillna(0)
+
+    df["score"] = (
+        (1 / (df["posición_promedio"] + 1)) * 0.3 +
+        (df["volumen_de_búsqueda"] / df["volumen_de_búsqueda"].max()) * 0.3 +
+        (df["tráfico_estimado"] / df["tráfico_estimado"].max()) * 0.2 +
+        (1 - df["dificultad"] / 100) * 0.1 +
+        (df["genera_leads"] > 0).astype(int) * 0.1
+    )
+
+    df_resultado = df.sort_values(by="score", ascending=False).head(45)
+
+    df_resultado = df_resultado.rename(columns={
+        "palabra_clave": "Palabra Clave",
+        "volumen_de_búsqueda": "Volumen",
+        "tráfico_estimado": "Tráfico",
+        "dificultad": "Dificultad",
+        "genera_leads": "Genera Leads",
+        "score": "Score"
+    })
+
+    columnas_finales = [
+        "url", "Palabra Clave", "Cluster", "Sub-cluster (si aplica)",
+        "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
+    ]
+    columnas_disponibles = [col for col in columnas_finales if col in df_resultado.columns]
+
+    return df_resultado[columnas_disponibles]
