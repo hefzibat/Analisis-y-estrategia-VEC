@@ -4,6 +4,12 @@ from sklearn.cluster import KMeans
 import nltk
 from nltk.corpus import stopwords
 
+# Descargar stopwords si no están disponibles
+try:
+    stopwords.words('spanish')
+except LookupError:
+    nltk.download('stopwords')
+
 # Descargar stopwords si no están ya disponibles
 nltk.download('stopwords')
 
