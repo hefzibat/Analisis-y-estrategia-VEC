@@ -1,44 +1,71 @@
 import streamlit as st
 import pandas as pd
-from seo_utils import (
-    filtrar_contenidos_con_potencial,
-    generar_keywords_por_cluster
-)
+from io import StringIO
+from seo_utils import filtrar_contenidos_con_potencial, generar_keywords_por_cluster
 
-st.set_page_config(page_title="Análisis SEO y Estrategia de Contenidos", layout="wide")
-st.title("🔍 Análisis SEO + Estrategia de Contenidos")
+st.set_page_config(page_title="Análisis SEO por Clúster", layout="wide")
+
+st.title("🔍 Análisis SEO y Sugerencia de Palabras Clave por Clúster")
+st.markdown("Carga los archivos necesarios para identificar oportunidades de optimización y generar nuevas keywords agrupadas por temática.")
 
 # Subida de archivos
-st.sidebar.header("Subir Archivos")
-archivo_analisis = st.sidebar.file_uploader("📊 Archivo de Análisis (CSV o Excel)", type=["csv", "xlsx"])
-archivo_auditoria = st.sidebar.file_uploader("📋 Archivo de Auditoría (CSV o Excel)", type=["csv", "xlsx"])
+st.sidebar.header("📂 Carga de archivos")
+archivo_analisis = st.sidebar.file_uploader("Archivo de análisis (CSV o Excel)", type=["csv", "xlsx"])
+archivo_auditoria = st.sidebar.file_uploader("Archivo de auditoría (CSV o Excel)", type=["csv", "xlsx"])
 
-if archivo_analisis and archivo_auditoria:
+# Leer archivos
+def leer_archivo(archivo):
+    if archivo is None:
+        return None
+    nombre = archivo.name.lower()
     try:
-        # Leer archivos según el formato
-        if archivo_analisis.name.endswith(".csv"):
-            df_analisis = pd.read_csv(archivo_analisis)
-        else:
-            df_analisis = pd.read_excel(archivo_analisis)
+        if nombre.endswith(".csv"):
+            return pd.read_csv(archivo)
+        elif nombre.endswith(".xlsx"):
+            return pd.read_excel(archivo)
+    except Exception as e:
+        st.error(f"Error al leer el archivo {nombre}: {e}")
+    return None
 
-        if archivo_auditoria.name.endswith(".csv"):
-            df_auditoria = pd.read_csv(archivo_auditoria)
-        else:
-            df_auditoria = pd.read_excel(archivo_auditoria)
+df_analisis = leer_archivo(archivo_analisis)
+df_auditoria = leer_archivo(archivo_auditoria)
 
-        st.success("✅ Archivos cargados correctamente.")
+# Parte 1: Contenidos con mayor potencial de optimización
+st.header("1️⃣ Contenidos con mayor potencial de optimización")
 
-        # Parte 1: Contenidos con potencial
-        st.header("🚀 Contenidos con mayor potencial de optimización")
-        df_potenciales = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
-        st.dataframe(df_potenciales, use_container_width=True)
+if df_analisis is not None and df_auditoria is not None:
+    try:
+        df_resultado = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
+        st.success("Análisis realizado correctamente.")
+        st.dataframe(df_resultado)
 
-        # Parte 2: Nuevas palabras clave por cluster
-        st.header("🧠 Sugerencias de nuevas palabras clave por cluster")
-        df_keywords = generar_keywords_por_cluster(df_analisis, df_auditoria)
-        st.dataframe(df_keywords, use_container_width=True)
-
+        # Descargar CSV
+        csv = df_resultado.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Descargar CSV",
+            data=csv,
+            file_name='contenidos_con_potencial.csv',
+            mime='text/csv',
+        )
     except Exception as e:
         st.error(f"❌ Error al procesar los archivos: {e}")
-else:
-    st.warning("📂 Por favor sube ambos archivos para comenzar.")
+
+# Parte 2: Palabras clave sugeridas por cluster y etapa del funnel
+st.header("2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
+
+if df_analisis is not None and df_auditoria is not None:
+    try:
+        palabras_sugeridas = generar_keywords_por_cluster(df_analisis, df_auditoria)
+        st.success("Palabras clave sugeridas generadas correctamente.")
+        st.dataframe(palabras_sugeridas)
+
+        # Descargar CSV
+        csv = palabras_sugeridas.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Descargar CSV",
+            data=csv,
+            file_name='palabras_sugeridas.csv',
+            mime='text/csv',
+        )
+    except Exception as e:
+        st.error(f"❌ Error al procesar los archivos: {e}")
