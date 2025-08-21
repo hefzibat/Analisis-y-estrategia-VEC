@@ -1,79 +1,55 @@
 import streamlit as st
 import pandas as pd
 from seo_utils import (
-    filtrar_contenido_con_potencial,
-    generar_nuevas_keywords,
-    generar_estrategia_contenido
+    cargar_datos,
+    filtrar_contenidos_potenciales,
+    generar_keywords_por_cluster,
 )
 
 st.set_page_config(layout="wide")
 
-st.title("🔍 Análisis y Estrategia de Contenidos SEO - VEC")
+st.title("Análisis SEO y Estrategia de Contenidos")
 
-st.markdown("""
-Esta aplicación te ayuda a identificar qué contenidos optimizar y sugiere una estrategia SEO basada en datos.
-""")
+# Carga de archivos
+st.sidebar.header("Carga de archivos")
+archivo_seo = st.sidebar.file_uploader("Sube el archivo de análisis SEO (CSV o Excel)", type=["csv", "xlsx"])
+archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría de contenidos (CSV o Excel)", type=["csv", "xlsx"])
 
-# Subida de archivos
-st.header("1. Cargar archivos")
-seo_file = st.file_uploader("📥 Cargar archivo SEO (CSV o XLSX)", type=["csv", "xlsx"])
-auditoria_file = st.file_uploader("📥 Cargar archivo de auditoría (CSV o XLSX)", type=["csv", "xlsx"])
-
-if seo_file and auditoria_file:
+if archivo_seo and archivo_auditoria:
     try:
-        # Cargar archivo SEO
-        if seo_file.name.endswith(".csv"):
-            df_seo = pd.read_csv(seo_file)
+        df_seo, df_auditoria = cargar_datos(archivo_seo, archivo_auditoria)
+
+        # PARTE 1: Contenidos a Optimizar
+        st.header("🔍 Parte 1: Contenidos con Potencial de Optimización")
+        df_potenciales = filtrar_contenidos_potenciales(df_seo, df_auditoria)
+
+        if not df_potenciales.empty:
+            st.dataframe(df_potenciales)
+            st.download_button(
+                label="📥 Descargar contenidos a optimizar",
+                data=df_potenciales.to_csv(index=False),
+                file_name="contenidos_a_optimizar.csv",
+                mime="text/csv"
+            )
         else:
-            df_seo = pd.read_excel(seo_file)
+            st.warning("No se encontraron contenidos con potencial claro de optimización.")
 
-        # Cargar archivo de auditoría
-        if auditoria_file.name.endswith(".csv"):
-            df_auditoria = pd.read_csv(auditoria_file)
+        # PARTE 2: Nuevas Keywords por Cluster/Subcluster
+        st.header("✨ Parte 2: Sugerencia de Nuevas Palabras Clave")
+        nuevas_keywords = generar_keywords_por_cluster(df_potenciales)
+
+        if not nuevas_keywords.empty:
+            st.dataframe(nuevas_keywords)
+            st.download_button(
+                label="📥 Descargar nuevas keywords sugeridas",
+                data=nuevas_keywords.to_csv(index=False),
+                file_name="nuevas_keywords.csv",
+                mime="text/csv"
+            )
         else:
-            df_auditoria = pd.read_excel(auditoria_file)
-
-        # Limpieza de columnas
-        df_seo.columns = df_seo.columns.str.strip()
-        df_auditoria.columns = df_auditoria.columns.str.strip()
-
-        # Asegurar que 'URL' esté estandarizada a 'url'
-        if "URL" in df_auditoria.columns:
-            df_auditoria.rename(columns={"URL": "url"}, inplace=True)
-        if "url" not in df_seo.columns:
-            raise KeyError("Falta la columna 'url' en el archivo SEO.")
-        if "url" not in df_auditoria.columns:
-            raise KeyError("Falta la columna 'url' en el archivo de auditoría.")
-
-        # Merge de ambos archivos
-        df_combined = pd.merge(df_seo, df_auditoria, on="url", how="inner")
-
-        st.success("✅ Archivos cargados correctamente y combinados")
-
-        # Ejecutar análisis
-        st.header("2. Resultados del Análisis")
-
-        resultados = filtrar_contenido_con_potencial(df_combined)
-        st.subheader("Contenidos con mayor potencial de optimización")
-        st.dataframe(resultados)
-
-        st.download_button("📥 Descargar contenidos con potencial", resultados.to_csv(index=False), "potencial_optimizar.csv", "text/csv")
-
-        st.divider()
-
-        nuevas_keywords = generar_nuevas_keywords(df_combined)
-        st.subheader("Sugerencias de nuevas palabras clave")
-        st.dataframe(nuevas_keywords)
-
-        st.download_button("📥 Descargar nuevas keywords", nuevas_keywords.to_csv(index=False), "nuevas_keywords.csv", "text/csv")
-
-        st.divider()
-
-        estrategia = generar_estrategia_contenido(df_combined)
-        st.subheader("Sugerencias de estrategia de contenido")
-        st.dataframe(estrategia)
-
-        st.download_button("📥 Descargar estrategia de contenido", estrategia.to_csv(index=False), "estrategia_contenido.csv", "text/csv")
+            st.info("No se pudieron generar sugerencias de keywords con los datos actuales.")
 
     except Exception as e:
-        st.error(f"Error al procesar los archivos: {e}")
+        st.error(f"Ocurrió un error al procesar los archivos: {e}")
+else:
+    st.info("Por favor, sube ambos archivos para comenzar.")
