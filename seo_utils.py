@@ -1,5 +1,4 @@
 import pandas as pd
-from difflib import get_close_matches
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     # Limpiar nombres de columnas
@@ -71,57 +70,90 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     ]
     return df_resultado[columnas_finales]
 
-def generar_ideas_desde_keywords_externas(df_contenidos_actuales, df_keywords_externas, df_auditoria):
-    # Validación de columnas esperadas en el archivo externo
-    columnas_esperadas = ["Keyword", "Avg. monthly searches"]
-    for col in columnas_esperadas:
+def generar_ideas_desde_keywords_externas(df_keywords_externas, df_analisis, df_auditoria):
+    import numpy as np
+
+    # Validar columnas necesarias
+    columnas_keywords = ['Keyword', 'Avg. monthly searches', 'Competition']
+    for col in columnas_keywords:
         if col not in df_keywords_externas.columns:
-            raise ValueError(f"Falta la columna requerida '{col}' en el archivo de keywords externas.")
+            raise ValueError(f"Falta la columna requerida en el archivo de keywords: {col}")
 
-    # 1. Limpiar y normalizar
-    df_keywords_externas = df_keywords_externas.dropna(subset=["Keyword"])
-    df_keywords_externas["Keyword"] = df_keywords_externas["Keyword"].str.strip().str.lower()
-
-    # 2. Crear set de palabras clave ya usadas
-    usadas = df_contenidos_actuales["palabra_clave"].str.lower().unique()
-
-    # 3. Filtrar las nuevas
-    df_nuevas = df_keywords_externas[~df_keywords_externas["Keyword"].isin(usadas)].copy()
-    df_nuevas = df_nuevas.rename(columns={
-        "Keyword": "palabra_clave",
-        "Avg. monthly searches": "volumen_de_busqueda"
+    # Limpiar y normalizar columnas
+    df_keywords_externas.columns = df_keywords_externas.columns.str.strip()
+    df_keywords_externas = df_keywords_externas.rename(columns={
+        'Keyword': 'palabra_clave_externa',
+        'Avg. monthly searches': 'volumen',
+        'Competition': 'competencia'
     })
 
-    # 4. Preparar dataset de referencia para clusterización
-    df_ref = df_auditoria[["Cluster", "Sub-cluster (si aplica)", "URL"]].dropna(subset=["Cluster"])
-    df_ref = df_ref.drop_duplicates()
-    df_ref["palabras_ref"] = df_ref["URL"].str.extract(r'([^/]+)$').fillna("")
+    # Filtrar keywords nuevas que no estén ya en contenidos existentes
+    keywords_existentes = df_analisis['palabra_clave'].str.lower().unique()
+    df_nuevas = df_keywords_externas[
+        ~df_keywords_externas['palabra_clave_externa'].str.lower().isin(keywords_existentes)
+    ].copy()
 
-    # 5. Asignar cluster y subcluster por similitud textual con palabras clave
-    cluster_resultados = []
-    for idx, row in df_nuevas.iterrows():
-        keyword = row["palabra_clave"]
-        coincidencias = get_close_matches(keyword, df_ref["palabras_ref"], n=1, cutoff=0.4)
+    # Normalizar valores y limpiar nulos
+    df_nuevas['volumen'] = pd.to_numeric(df_nuevas['volumen'], errors='coerce').fillna(0)
+    df_nuevas['competencia'] = pd.to_numeric(df_nuevas['competencia'], errors='coerce').fillna(0)
 
-        if coincidencias:
-            match = coincidencias[0]
-            cluster = df_ref[df_ref["palabras_ref"] == match]["Cluster"].values[0]
-            subcluster = df_ref[df_ref["palabras_ref"] == match]["Sub-cluster (si aplica)"].values[0]
+    # Estimar canal sugerido
+    def sugerir_canal(row):
+        if row['competencia'] < 0.4:
+            return 'Inbound (contenido evergreen)'
+        elif row['competencia'] < 0.7:
+            return 'Inbound con IA / Lead magnet'
         else:
-            cluster = "Por definir"
-            subcluster = "Por definir"
+            return 'Campaña puntual / Email + IA'
 
-        cluster_resultados.append((cluster, subcluster))
+    df_nuevas['Canal sugerido'] = df_nuevas.apply(sugerir_canal, axis=1)
 
-    df_nuevas[["cluster", "subcluster"]] = pd.DataFrame(cluster_resultados, index=df_nuevas.index)
+    # Estimar tipo de contenido
+    def sugerir_tipo_contenido(row):
+        if row['volumen'] >= 1000 and row['competencia'] < 0.5:
+            return 'Blog educativo o comparativo'
+        elif row['volumen'] >= 500:
+            return 'Lead magnet descargable'
+        else:
+            return 'Checklist, mini guía o herramienta automatizada'
 
-    # 6. Sugerir canal según volumen de búsqueda
-    df_nuevas["canal_sugerido"] = df_nuevas["volumen_de_busqueda"].apply(
-        lambda x: "Inbound" if x >= 100 else "Contenido asistido por IA"
+    df_nuevas['Tipo de contenido sugerido'] = df_nuevas.apply(sugerir_tipo_contenido, axis=1)
+
+    # Asignar cluster y subcluster por similitud
+    df_auditoria = df_auditoria.rename(columns={
+        'URL': 'url',
+        'Sub-cluster (si aplica)': 'Subcluster',
+        'Leads 90 d': 'genera_leads'
+    })
+
+    clusters_keywords = df_analisis[['palabra_clave', 'url']].merge(
+        df_auditoria[['url', 'Cluster', 'Subcluster']], on='url', how='left'
     )
 
-    # 7. Reordenar columnas
-    columnas_finales = [
-        "palabra_clave", "cluster", "subcluster", "volumen_de_busqueda", "canal_sugerido"
-    ]
-    return df_nuevas[columnas_finales]
+    def asignar_cluster(palabra):
+        coincidencias = clusters_keywords[
+            clusters_keywords['palabra_clave'].str.contains(palabra.split()[0], case=False, na=False)
+        ]
+        if not coincidencias.empty:
+            top = coincidencias.iloc[0]
+            return pd.Series([top['Cluster'], top['Subcluster']])
+        else:
+            return pd.Series(['No identificado', 'No identificado'])
+
+    df_nuevas[['Cluster', 'Subcluster']] = df_nuevas['palabra_clave_externa'].apply(asignar_cluster)
+
+    # Ordenar por volumen para mostrar ideas más atractivas
+    df_final = df_nuevas.sort_values(by='volumen', ascending=False)
+
+    # Renombrar para visualización final
+    df_final = df_final.rename(columns={
+        'palabra_clave_externa': 'Palabra Clave',
+        'volumen': 'Volumen',
+        'competencia': 'Competencia'
+    })
+
+    return df_final[[
+        'Palabra Clave', 'Volumen', 'Competencia',
+        'Cluster', 'Subcluster',
+        'Tipo de contenido sugerido', 'Canal sugerido'
+    ]]
