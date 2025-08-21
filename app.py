@@ -2,41 +2,40 @@ import streamlit as st
 import pandas as pd
 from seo_utils import (
     filtrar_contenidos_con_potencial,
-    generar_palabras_clave_sugeridas,
-    generar_sugerencias_titulos_y_canales
+    generar_keywords_por_cluster
 )
 
-st.set_page_config(layout="wide")
-st.title("🔍 Análisis y estrategia de contenidos VEC")
+st.set_page_config(page_title="Análisis SEO Estratégico", layout="wide")
 
-st.markdown("Sube tus archivos para comenzar el análisis.")
+st.title("🔍 Análisis y estrategia SEO - VEC")
 
-archivo_keywords = st.file_uploader("📄 Carga el archivo de palabras clave (Excel o CSV)", type=["xlsx", "csv"])
-archivo_auditoria = st.file_uploader("📄 Carga el archivo de auditoría (Excel o CSV)", type=["xlsx", "csv"])
+st.markdown("Cargue los archivos para comenzar el análisis:")
 
-if archivo_keywords and archivo_auditoria:
+archivo_analisis = st.file_uploader("📄 Archivo de Análisis (Excel)", type=["xlsx"])
+archivo_auditoria = st.file_uploader("📄 Archivo de Auditoría (CSV)", type=["csv"])
+
+if archivo_analisis and archivo_auditoria:
     try:
-        if archivo_keywords.name.endswith(".xlsx"):
-            df_keywords = pd.read_excel(archivo_keywords)
-        else:
-            df_keywords = pd.read_csv(archivo_keywords)
+        df_analisis = pd.read_excel(archivo_analisis)
+        df_auditoria = pd.read_csv(archivo_auditoria)
 
-        if archivo_auditoria.name.endswith(".xlsx"):
-            df_auditoria = pd.read_excel(archivo_auditoria)
-        else:
-            df_auditoria = pd.read_csv(archivo_auditoria)
+        st.header("1️⃣ Contenidos con potencial para optimizar")
+        try:
+            df_contenidos = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
+            st.success("✅ Análisis completado")
+            st.dataframe(df_contenidos, use_container_width=True)
+        except Exception as e:
+            st.error(f"❌ Error en filtrado: {e}")
 
-        st.subheader("1️⃣ Contenidos con potencial para optimizar")
-        df_filtrado = filtrar_contenidos_con_potencial(df_keywords, df_auditoria)
-        st.dataframe(df_filtrado)
-
-        st.subheader("2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
-        df_palabras_sugeridas = generar_palabras_clave_sugeridas(df_filtrado)
-        st.dataframe(df_palabras_sugeridas)
-
-        st.subheader("3️⃣ Sugerencias de títulos y canales")
-        df_sugerencias = generar_sugerencias_titulos_y_canales(df_palabras_sugeridas)
-        st.dataframe(df_sugerencias)
+        st.header("2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
+        try:
+            df_keywords = generar_keywords_por_cluster(df_analisis, df_auditoria)
+            st.success("✅ Sugerencias generadas")
+            st.dataframe(df_keywords, use_container_width=True)
+        except Exception as e:
+            st.error(f"❌ Error en generación de keywords: {e}")
 
     except Exception as e:
         st.error(f"❌ Error al procesar los archivos: {e}")
+else:
+    st.warning("⚠️ Por favor, cargue ambos archivos para comenzar el análisis.")
