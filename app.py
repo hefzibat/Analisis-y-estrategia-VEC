@@ -32,3 +32,26 @@ if archivo_analisis and archivo_auditoria:
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
+# Parte 2: Ideas nuevas a partir de palabras clave externas
+st.markdown("---")
+st.subheader("Parte 2: Ideas nuevas a partir de palabras clave externas")
+
+archivo_keywords = st.file_uploader("Carga tu archivo de palabras clave externas (opcional)", type=['csv', 'xlsx'])
+
+if archivo_keywords is not None:
+    try:
+        if archivo_keywords.name.endswith('.csv'):
+            df_keywords_externas = pd.read_csv(archivo_keywords)
+        else:
+            df_keywords_externas = pd.read_excel(archivo_keywords)
+        
+        df_ideas_externas = generar_ideas_con_keywords_externas(df_auditoria, df_keywords_externas, df_contenidos_potenciales)
+
+        if not df_ideas_externas.empty:
+            st.success(f"✅ {len(df_ideas_externas)} ideas nuevas generadas")
+            st.dataframe(df_ideas_externas)
+        else:
+            st.warning("No se encontraron palabras clave nuevas que no estén ya usadas en los contenidos actuales.")
+
+    except Exception as e:
+        st.error(f"Error al procesar el archivo de palabras clave externas: {e}")
