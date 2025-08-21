@@ -32,3 +32,29 @@ if archivo_analisis and archivo_auditoria:
 
     except Exception as e:
         st.error(f"❌ Error: {e}")
+        
+# PARTE 2 - Generación de ideas desde keywords externas
+st.markdown("---")
+st.subheader("🔎 Parte 2: Generación de nuevas ideas de contenido")
+
+archivo_keywords = st.file_uploader("📂 Sube el archivo con palabras clave externas (Google Ads, Semrush, etc)", type=["csv", "xlsx"])
+
+if archivo_keywords is not None:
+    if 'contenidos_actuales' in locals():
+        try:
+            nuevas_ideas_df = generar_ideas_desde_keywords_externas(archivo_keywords, contenidos_actuales)
+            st.success("✅ Ideas de contenido generadas correctamente.")
+            st.dataframe(nuevas_ideas_df)
+
+            # Botón para descargar
+            csv_ideas = nuevas_ideas_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="⬇️ Descargar ideas nuevas en CSV",
+                data=csv_ideas,
+                file_name="ideas_contenido_nuevas.csv",
+                mime="text/csv"
+            )
+        except Exception as e:
+            st.error(f"⚠️ Error al generar ideas nuevas: {e}")
+    else:
+        st.warning("⚠️ Primero debes ejecutar la Parte 1 para tener los contenidos actuales.")
