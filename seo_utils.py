@@ -1,6 +1,11 @@
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
+import nltk
+from nltk.corpus import stopwords
+
+# Descargar stopwords si no están ya disponibles
+nltk.download('stopwords')
 
 def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
     try:
@@ -57,7 +62,7 @@ def generar_keywords_por_cluster(df_keywords, df_auditoria):
             if len(corpus) < 2:
                 continue
 
-            vectorizer = TfidfVectorizer(stop_words='spanish', max_features=10)
+            vectorizer = TfidfVectorizer(stop_words=stopwords.words('spanish'), max_features=10)
             X = vectorizer.fit_transform(corpus)
 
             n_clusters = min(3, len(corpus))
