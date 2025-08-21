@@ -3,81 +3,82 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 
 
-def normalizar_columna(df, nombres_posibles):
-    for nombre in nombres_posibles:
-        if nombre in df.columns:
-            return df[nombre]
-    raise KeyError(f"Ninguna de las siguientes columnas fue encontrada: {nombres_posibles}")
-
-
 def estandarizar_columnas(df):
-    df.columns = [col.lower().strip().replace(" ", "_").replace("-", "_") for col in df.columns]
-    return df
-
-
-def combinar_datasets(df_analisis, df_auditoria):
-    df_analisis = estandarizar_columnas(df_analisis)
-    df_auditoria = estandarizar_columnas(df_auditoria)
-
-    df_analisis = df_analisis.rename(columns={
-        "url": "url",
-        "palabra_clave": "palabra_clave",
-        "posición_promedio": "posicion",
-        "volumen_de_búsqueda": "volumen",
-        "tráfico_estimado": "trafico",
-        "dificultad": "dificultad",
-        "tipo_de_contenido": "tipo_contenido"
-    })
-
-    df_auditoria = df_auditoria.rename(columns={
-        "url": "url",
-        "categoría": "cluster",
-        "categoría_sugerida": "subcluster"
-    })
-
-    df_combinado = pd.merge(df_analisis, df_auditoria, on="url", how="left")
-    return df_combinado
+    mapping = {
+        'url': ['url', 'URL', 'Url'],
+        'palabra_clave': ['palabra_clave', 'PALABRA CLAVE', 'palabra clave', 'Palabra Clave'],
+        'posicion': ['posición promedio', 'posicion', 'Posición promedio', 'Posicion promedio', 'posición', 'posición_promedio'],
+        'volumen': ['volumen', 'Volumen'],
+        'dificultad': ['dificultad', 'Dificultad'],
+        'trafico': ['tráfico', 'Trafico', 'tráfico estimado', 'Tráfico']
+    }
+    columnas_originales = df.columns.tolist()
+    nuevas_columnas = {}
+    for nueva, variantes in mapping.items():
+        for variante in variantes:
+            if variante in columnas_originales:
+                nuevas_columnas[variante] = nueva
+                break
+    return df.rename(columns=nuevas_columnas)
 
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    df = combinar_datasets(df_analisis, df_auditoria)
-    df = df.dropna(subset=["posicion", "volumen", "trafico", "dificultad"], how="any")
-    df = df[(df["posicion"] > 10) & (df["posicion"] < 30)]
-    df["score"] = (df["volumen"] * 0.4 + df["trafico"] * 0.3 + (100 - df["dificultad"]) * 0.3)
-    df = df.sort_values(by="score", ascending=False).head(45)
-    return df
+    df_analisis = estandarizar_columnas(df_analisis)
+    df_auditoria = estandarizar_columnas(df_auditoria)
+
+    df_auditoria = df_auditoria[['url', 'cluster', 'subcluster']].drop_duplicates()
+    df_analisis = df_analisis.merge(df_auditoria, on='url', how='left')
+
+    for col in ['url', 'palabra_clave', 'posicion', 'volumen', 'dificultad', 'trafico']:
+        if col not in df_analisis.columns:
+            raise KeyError(f"Falta la columna requerida en df_analisis: {col}")
+
+    df_filtrado = df_analisis[
+        (df_analisis['posicion'] > 6) & (df_analisis['posicion'] <= 30) &
+        (df_analisis['volumen'] > 100) &
+        (df_analisis['trafico'] > 0)
+    ].copy()
+
+    df_filtrado['score'] = (
+        (30 - df_filtrado['posicion']) * 0.4 +
+        df_filtrado['volumen'] * 0.3 +
+        df_filtrado['trafico'] * 0.2 -
+        df_filtrado['dificultad'] * 0.1
+    )
+
+    return df_filtrado.sort_values(by='score', ascending=False).head(45)
 
 
-def generar_nuevas_keywords(df_combinado):
-    df = df_combinado.dropna(subset=["palabra_clave"])
-    vectorizer = TfidfVectorizer(stop_words='spanish')
-    X = vectorizer.fit_transform(df["palabra_clave"])
+def generar_nuevas_keywords(df_filtrado):
+    tfidf = TfidfVectorizer(stop_words='spanish')
+    X = tfidf.fit_transform(df_filtrado['palabra_clave'])
+    kmeans = KMeans(n_clusters=5, random_state=0).fit(X)
+    df_filtrado['nuevo_cluster'] = kmeans.labels_
 
-    kmeans = KMeans(n_clusters=5, random_state=42, n_init='auto')
-    df["keyword_cluster"] = kmeans.fit_predict(X)
+    nuevas_keywords = df_filtrado.groupby('nuevo_cluster').apply(
+        lambda x: {
+            'cluster': x['cluster'].iloc[0] if 'cluster' in x else '',
+            'subcluster': x['subcluster'].iloc[0] if 'subcluster' in x else '',
+            'sugerencia': ' '.join(x['palabra_clave'].values[:3])
+        }
+    ).tolist()
 
-    nuevas_keywords = []
-    for cluster_id in df["keyword_cluster"].unique():
-        top_keywords = df[df["keyword_cluster"] == cluster_id]["palabra_clave"].head(3).tolist()
-        nuevas_keywords.extend(top_keywords)
     return nuevas_keywords
 
 
-def generar_sugerencias_contenido(df):
+def generar_sugerencias_contenido(df_filtrado):
     sugerencias = []
-    for _, row in df.iterrows():
-        cluster = row.get("cluster", "General")
-        subcluster = row.get("subcluster", "")
-        palabra = row["palabra_clave"]
-
-        canal = "Blog" if row["posicion"] > 15 else "Guía" if row["volumen"] > 1000 else "Newsletter"
-        titulo = f"Estrategias para posicionar '{palabra}' en {cluster}/{subcluster}"
-
+    for _, fila in df_filtrado.iterrows():
+        cluster = fila.get('cluster', '')
+        subcluster = fila.get('subcluster', '')
+        keyword = fila['palabra_clave']
+        canal = 'Blog' if fila['volumen'] > 500 else 'Video'
+        titulo = f"Cómo mejorar tu estrategia de {keyword} en {subcluster}"
         sugerencias.append({
-            "palabra_clave": palabra,
-            "titulo": titulo,
-            "canal": canal,
-            "cluster": cluster,
-            "subcluster": subcluster
+            'cluster': cluster,
+            'subcluster': subcluster,
+            'palabra_clave': keyword,
+            'canal': canal,
+            'titulo_sugerido': titulo
         })
-    return pd.DataFrame(sugerencias)
+    return sugerencias
