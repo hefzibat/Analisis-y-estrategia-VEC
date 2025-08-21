@@ -73,36 +73,38 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     
 def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
     # Normalizar y unificar columnas
-    contenidos_existentes = pd.concat([df_analisis['palabra_clave'], df_auditoria['Título']], axis=0).astype(str).str.lower().unique()
-    nuevas_keywords = df_keywords_externas['palabra_clave'].dropna().astype(str).str.lower().unique()
+    contenidos_existentes = pd.concat([
+        df_analisis['palabra_clave'].astype(str).str.lower(),
+        df_auditoria['Título'].astype(str).str.lower()
+    ], axis=0).unique()
 
-    # Filtrar solo las que no están ya usadas
+    nuevas_keywords = df_keywords_externas['palabra_clave'].dropna().astype(str).str.lower().unique()
     keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
 
-    # Plantillas variadas para generar títulos
+    if not keywords_nuevas:
+        return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido"])
+
+    # Plantillas variadas para títulos
     plantillas = [
-        "Cómo lograr {kw} en 5 pasos",
-        "Errores comunes al intentar {kw} y cómo evitarlos",
-        "¿Vale la pena enfocarse en {kw}? Descúbrelo aquí",
-        "Estrategias efectivas para {kw} que sí funcionan",
-        "Domina el arte de {kw} sin complicarte",
-        "Qué es {kw} y por qué deberías saberlo hoy",
-        "Guía práctica para empezar con {kw}",
-        "Los secretos de {kw} que nadie te cuenta"
+        "Cómo lograr {kw} en tu negocio",
+        "Guía práctica para dominar {kw}",
+        "¿Estás aprovechando {kw} como deberías?",
+        "Estrategias efectivas para mejorar en {kw}",
+        "Qué es {kw} y cómo implementarlo con éxito",
+        "Errores comunes al aplicar {kw} (y cómo evitarlos)",
+        "Checklist para optimizar {kw} desde hoy"
     ]
 
-    # Función para sugerir canal según el tipo de keyword
     def sugerir_canal(kw):
-        if any(palabra in kw for palabra in ["qué es", "cómo", "guía", "pasos", "estrategia"]):
-            return "Blog"
-        elif any(palabra in kw for palabra in ["errores", "evitar", "mitos"]):
-            return "Carrusel Instagram / LinkedIn"
-        elif any(palabra in kw for palabra in ["secreto", "truco", "consejo"]):
-            return "Reel / YouTube Shorts"
-        elif any(palabra in kw for palabra in ["domina", "aprende", "mejorar"]):
-            return "Video educativo largo"
+        kw = kw.lower()
+        if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
+            return "Herramienta con IA"
+        elif any(x in kw for x in ["ebook", "guía", "descargable", "checklist", "manual"]):
+            return "Lead Magnet"
+        elif any(x in kw for x in ["email", "newsletter", "correos", "suscriptores"]):
+            return "Email"
         else:
-            return "Blog o Carrusel"
+            return "Blog"
 
     resultados = []
     for kw in keywords_nuevas:
