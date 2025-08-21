@@ -1,4 +1,5 @@
 import pandas as pd
+from difflib import get_close_matches
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     # Limpiar nombres de columnas
@@ -70,74 +71,57 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     ]
     return df_resultado[columnas_finales]
 
-def generar_ideas_desde_keywords_externas(archivo_keywords, df_resultado_parte1, df_auditoria):
-    import pandas as pd
+def generar_ideas_desde_keywords_externas(df_contenidos_actuales, df_keywords_externas, df_auditoria):
+    # Validación de columnas esperadas en el archivo externo
+    columnas_esperadas = ["Keyword", "Avg. monthly searches"]
+    for col in columnas_esperadas:
+        if col not in df_keywords_externas.columns:
+            raise ValueError(f"Falta la columna requerida '{col}' en el archivo de keywords externas.")
 
-    # Cargar archivo de keywords externas
-    if archivo_keywords.name.endswith(".csv"):
-        df_keywords = pd.read_csv(archivo_keywords)
-    else:
-        df_keywords = pd.read_excel(archivo_keywords)
+    # 1. Limpiar y normalizar
+    df_keywords_externas = df_keywords_externas.dropna(subset=["Keyword"])
+    df_keywords_externas["Keyword"] = df_keywords_externas["Keyword"].str.strip().str.lower()
 
-    # Normalizar nombres de columnas
-    df_keywords.columns = df_keywords.columns.str.strip().str.lower()
-    columnas_validas = ['keyword', 'avg. monthly searches', 'competition']
-    if not all(col in df_keywords.columns for col in columnas_validas):
-        raise ValueError("El archivo debe contener las columnas: 'Keyword', 'Avg. monthly searches', 'Competition'")
+    # 2. Crear set de palabras clave ya usadas
+    usadas = df_contenidos_actuales["palabra_clave"].str.lower().unique()
 
-    df_keywords.rename(columns={
-        'keyword': 'palabra_clave',
-        'avg. monthly searches': 'volumen_de_búsqueda',
-        'competition': 'competencia'
-    }, inplace=True)
+    # 3. Filtrar las nuevas
+    df_nuevas = df_keywords_externas[~df_keywords_externas["Keyword"].isin(usadas)].copy()
+    df_nuevas = df_nuevas.rename(columns={
+        "Keyword": "palabra_clave",
+        "Avg. monthly searches": "volumen_de_busqueda"
+    })
 
-    # Filtrar palabras clave nuevas
-    keywords_actuales = df_resultado_parte1["palabra_clave"].str.lower().unique()
-    df_keywords_nuevas = df_keywords[~df_keywords['palabra_clave'].str.lower().isin(keywords_actuales)].copy()
+    # 4. Preparar dataset de referencia para clusterización
+    df_ref = df_auditoria[["Cluster", "Sub-cluster (si aplica)", "URL"]].dropna(subset=["Cluster"])
+    df_ref = df_ref.drop_duplicates()
+    df_ref["palabras_ref"] = df_ref["URL"].str.extract(r'([^/]+)$').fillna("")
 
-    # Normalizar auditoría
-    df_auditoria.columns = df_auditoria.columns.str.strip().str.lower()
-    auditoria_reducida = df_auditoria[['url', 'cluster', 'sub-cluster (si aplica)']].copy()
-    auditoria_reducida.rename(columns={
-        'sub-cluster (si aplica)': 'subcluster'
-    }, inplace=True)
+    # 5. Asignar cluster y subcluster por similitud textual con palabras clave
+    cluster_resultados = []
+    for idx, row in df_nuevas.iterrows():
+        keyword = row["palabra_clave"]
+        coincidencias = get_close_matches(keyword, df_ref["palabras_ref"], n=1, cutoff=0.4)
 
-    # Asignar cluster y subcluster por coincidencia parcial
-    def asignar_cluster_subcluster(palabra, auditoria_df):
-        for _, fila in auditoria_df.iterrows():
-            if pd.notnull(fila['url']) and palabra.lower() in str(fila['url']).lower():
-                return fila['cluster'], fila['subcluster']
-        return None, None
-
-    df_keywords_nuevas[['cluster', 'subcluster']] = df_keywords_nuevas.apply(
-        lambda row: pd.Series(asignar_cluster_subcluster(row['palabra_clave'], auditoria_reducida)), axis=1
-    )
-
-    # Crear título sugerido simple
-    df_keywords_nuevas['título sugerido'] = df_keywords_nuevas['palabra_clave'].apply(
-        lambda x: f"Cómo usar {x} para mejorar tu estrategia"
-    )
-
-    # Canal sugerido basado en volumen y competencia
-    def canal_sugerido(row):
-        vol = row['volumen_de_búsqueda']
-        comp = row['competencia']
-        if pd.isna(vol) or pd.isna(comp):
-            return "Blog"
-        if vol > 1000 and comp < 0.4:
-            return "Lead magnet descargable"
-        elif vol > 1000 and comp >= 0.4:
-            return "Bot o herramienta con IA"
-        elif vol > 500:
-            return "Email educativo o nurturing"
+        if coincidencias:
+            match = coincidencias[0]
+            cluster = df_ref[df_ref["palabras_ref"] == match]["Cluster"].values[0]
+            subcluster = df_ref[df_ref["palabras_ref"] == match]["Sub-cluster (si aplica)"].values[0]
         else:
-            return "Blog"
+            cluster = "Por definir"
+            subcluster = "Por definir"
 
-    df_keywords_nuevas['canal sugerido'] = df_keywords_nuevas.apply(canal_sugerido, axis=1)
+        cluster_resultados.append((cluster, subcluster))
 
-    # Reordenar columnas finales
+    df_nuevas[["cluster", "subcluster"]] = pd.DataFrame(cluster_resultados, index=df_nuevas.index)
+
+    # 6. Sugerir canal según volumen de búsqueda
+    df_nuevas["canal_sugerido"] = df_nuevas["volumen_de_busqueda"].apply(
+        lambda x: "Inbound" if x >= 100 else "Contenido asistido por IA"
+    )
+
+    # 7. Reordenar columnas
     columnas_finales = [
-        'palabra_clave', 'volumen_de_búsqueda', 'competencia',
-        'cluster', 'subcluster', 'título sugerido', 'canal sugerido'
+        "palabra_clave", "cluster", "subcluster", "volumen_de_busqueda", "canal_sugerido"
     ]
-    return df_keywords_nuevas[columnas_finales]
+    return df_nuevas[columnas_finales]
