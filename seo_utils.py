@@ -1,89 +1,73 @@
+# seo_utils.py
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 
-# ------------------------------------------------------------------------
-# ✅ PARTE 1 — NO TOCAR (100% restaurada como la tenías)
-# ------------------------------------------------------------------------
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    df = df_analisis.merge(df_auditoria, how='left', left_on='url', right_on='URL')
+    df_analisis = df_analisis.copy()
+    df_auditoria = df_auditoria.copy()
 
-    df['score_optimizacion'] = (
-        (1 / (df['posición_promedio'] + 1)) * df['volumen_de_búsqueda'] *
-        (1 - df['dificultad']) * (df['tráfico_estimado'] + 1)
+    df_analisis = df_analisis.rename(columns={
+        'url': 'URL',
+        'palabra_clave': 'Palabra clave',
+        'posición_promedio': 'Posición promedio',
+        'volumen_de_búsqueda': 'Volumen de búsqueda',
+        'dificultad': 'Dificultad',
+        'tráfico_estimado': 'Tráfico estimado'
+    })
+
+    df_auditoria = df_auditoria.rename(columns={
+        "Leads 90 d *(esta se usará como 'genera_leads')": 'genera_leads'
+    })
+
+    df = pd.merge(df_analisis, df_auditoria, on='URL', how='inner')
+
+    df = df[(df['Posición promedio'] >= 4) & (df['Posición promedio'] <= 20)]
+    df = df[df['Volumen de búsqueda'] >= 100]
+    df = df[df['genera_leads'] >= 1]
+
+    df['Score'] = (
+        (1 / df['Posición promedio']) * 0.4 +
+        df['Volumen de búsqueda'].rank(pct=True) * 0.3 +
+        df['Tráfico estimado'].rank(pct=True) * 0.3
     )
 
-    df = df[df['score_optimizacion'] > df['score_optimizacion'].median()]
+    df = df.sort_values(by='Score', ascending=False)
+    return df
 
-    columnas_resultado = [
-        'url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda',
-        'dificultad', 'tráfico_estimado', 'tipo_de_contenido',
-        'score_optimizacion', 'Cluster', 'Sub-cluster (si aplica)'
-    ]
-
-    return df[columnas_resultado]
-
-# ------------------------------------------------------------------------
-# ✅ PARTE 2 — Generación de nuevas keywords internas y externas
-# ------------------------------------------------------------------------
 def generar_keywords_por_cluster(df_analisis, df_auditoria, df_keywords_externas=None):
-    try:
-        # Normalizar columnas externas (solo usamos la primera como 'palabra_clave')
-        if df_keywords_externas is not None:
-            primera_col = df_keywords_externas.columns[0]
-            df_keywords_externas = df_keywords_externas.rename(columns={primera_col: 'palabra_clave'})
-            df_keywords_externas = df_keywords_externas[['palabra_clave']]
+    df = pd.merge(df_analisis, df_auditoria, left_on='url', right_on='URL', how='inner')
 
-        # Unir las keywords internas y externas
-        df_all_keywords = df_analisis[['url', 'palabra_clave']].copy()
-        if df_keywords_externas is not None:
-            df_all_keywords = pd.concat([df_all_keywords[['palabra_clave']], df_keywords_externas], ignore_index=True)
-        else:
-            df_all_keywords = df_all_keywords[['palabra_clave']]
+    # Procesar keywords internas
+    df_internas = df[['palabra_clave', 'Cluster', 'Sub-cluster (si aplica)']].copy()
+    df_internas = df_internas.rename(columns={'Sub-cluster (si aplica)': 'Subcluster'})
 
-        # Limpiar
-        df_all_keywords.dropna(subset=['palabra_clave'], inplace=True)
-        df_all_keywords['palabra_clave'] = df_all_keywords['palabra_clave'].astype(str)
+    if df_keywords_externas is not None:
+        # Intentar detectar columnas relevantes automáticamente
+        columnas = df_keywords_externas.columns.tolist()
 
-        # Validar columnas esenciales en auditoría
-        if not all(col in df_auditoria.columns for col in ['URL', 'Cluster', 'Sub-cluster (si aplica)']):
-            raise ValueError("El archivo de auditoría debe contener las columnas 'URL', 'Cluster' y 'Sub-cluster (si aplica)'")
+        # Identificar la columna de palabra clave
+        col_keyword = next((col for col in columnas if 'keyword' in col.lower() or 'palabra' in col.lower()), columnas[0])
 
-        # Mapear cluster desde auditoría
-        mapeo = df_auditoria[['URL', 'Cluster', 'Sub-cluster (si aplica)']].drop_duplicates()
-        df_mapeado = df_analisis.merge(mapeo, how='left', left_on='url', right_on='URL')
+        df_externas = df_keywords_externas[[col_keyword]].copy()
+        df_externas = df_externas.rename(columns={col_keyword: 'palabra_clave'})
 
-        resultados = []
+        # Añadir columnas vacías para merge posterior
+        df_externas['Cluster'] = None
+        df_externas['Subcluster'] = None
 
-        for (cluster, subcluster), grupo in df_mapeado.groupby(['Cluster', 'Sub-cluster (si aplica)']):
-            palabras = grupo['palabra_clave'].dropna().astype(str).tolist()
+        # Unir ambas
+        df_total = pd.concat([df_internas, df_externas], ignore_index=True)
+    else:
+        df_total = df_internas.copy()
 
-            # Añadir también las externas
-            if df_keywords_externas is not None:
-                palabras += df_keywords_externas['palabra_clave'].dropna().astype(str).tolist()
+    df_total = df_total.dropna(subset=['palabra_clave'])
+    df_total = df_total.drop_duplicates(subset=['palabra_clave'])
 
-            if len(palabras) < 2:
-                continue
+    # Vectorización y clustering
+    tfidf = TfidfVectorizer(stop_words='spanish')
+    X = tfidf.fit_transform(df_total['palabra_clave'])
+    kmeans = KMeans(n_clusters=5, random_state=0, n_init='auto')
+    df_total['cluster_tfidf'] = kmeans.fit_predict(X)
 
-            vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2), max_features=30)
-            X = vectorizer.fit_transform(palabras)
-
-            n_clusters = min(5, len(palabras))
-            if n_clusters < 2:
-                continue
-
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-            kmeans.fit(X)
-
-            for i, palabra in enumerate(palabras):
-                resultados.append({
-                    'Cluster': cluster,
-                    'Subcluster': subcluster,
-                    'palabra_clave_sugerida': palabra,
-                    'grupo': int(kmeans.labels_[i])
-                })
-
-        return pd.DataFrame(resultados)
-
-    except Exception as e:
-        raise ValueError(f"Error en generación de keywords: {str(e)}")
+    return df_total
