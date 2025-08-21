@@ -51,9 +51,10 @@ if archivo_keywords is not None:
             else:
                 df_keywords_externas = pd.read_excel(archivo_keywords)
 
+            # ✅ CORREGIDO: orden correcto de argumentos
             nuevas_ideas_df = generar_ideas_desde_keywords_externas(
+                archivo_keywords,
                 st.session_state['df_contenidos_actuales'],
-                df_keywords_externas,
                 st.session_state['df_auditoria']
             )
 
