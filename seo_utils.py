@@ -74,17 +74,24 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     import random
     import pandas as pd
 
+    # Validación de columnas necesarias
+    if 'palabra_clave' not in df_analisis.columns:
+        raise ValueError("❌ El archivo de análisis no tiene la columna 'palabra_clave'.")
+    if 'Título' not in df_auditoria.columns:
+        raise ValueError("❌ El archivo de auditoría no tiene la columna 'Título'.")
+    if 'Keyword' not in df_keywords_externas.columns:
+        raise ValueError("❌ El archivo externo no tiene la columna 'Keyword'.")
+
     # 1. Unificar y limpiar keywords existentes
     contenidos_existentes = pd.concat([
         df_analisis['palabra_clave'].astype(str).str.lower(),
         df_auditoria['Título'].astype(str).str.lower()
     ], axis=0).unique()
 
-    # CAMBIO: Usar 'Keyword' en lugar de 'palabra_clave'
     nuevas_keywords = df_keywords_externas['Keyword'].dropna().astype(str).str.lower().unique()
     keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
 
-    if not keywords_nuevas:
+    if not keywords_nuevas.any():
         return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido", "Cluster", "Subcluster"])
 
     # 2. Plantillas variadas
