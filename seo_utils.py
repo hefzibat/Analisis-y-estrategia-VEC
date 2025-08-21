@@ -4,54 +4,76 @@ from sklearn.cluster import KMeans
 
 def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
     try:
-        df_keywords["posición_promedio"] = pd.to_numeric(df_keywords["posición_promedio"], errors="coerce")
-        df_keywords["volumen_de_búsqueda"] = pd.to_numeric(df_keywords["volumen_de_búsqueda"], errors="coerce")
-        df_keywords["tráfico_estimado"] = pd.to_numeric(df_keywords["tráfico_estimado"], errors="coerce")
-        df_keywords["dificultad"] = pd.to_numeric(df_keywords["dificultad"], errors="coerce")
+        df_keywords = df_keywords.copy()
+        df_auditoria = df_auditoria.copy()
 
-        df_merged = pd.merge(df_keywords, df_auditoria, left_on="url", right_on="URL", how="inner")
+        df_auditoria = df_auditoria.rename(columns={
+            'URL': 'url',
+            'Leads 90 d': 'genera_leads'
+        })
 
-        df_merged = df_merged.dropna(subset=["posición_promedio", "volumen_de_búsqueda", "tráfico_estimado", "dificultad"])
+        df = pd.merge(df_keywords, df_auditoria, how='left', on='url')
 
-        df_merged["score"] = (
-            (100 - df_merged["posición_promedio"]) * 0.25
-            + df_merged["volumen_de_búsqueda"] * 0.25
-            + df_merged["tráfico_estimado"] * 0.25
-            + (100 - df_merged["dificultad"]) * 0.25
+        columnas_numericas = ['posición_promedio', 'volumen_de_búsqueda', 'tráfico_estimado', 'dificultad', 'genera_leads']
+        for col in columnas_numericas:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        df = df.dropna(subset=columnas_numericas)
+
+        df['score'] = (
+            (10 - df['posición_promedio']) * 0.25 +
+            df['volumen_de_búsqueda'] * 0.15 +
+            df['tráfico_estimado'] * 0.3 +
+            (10 - df['dificultad']) * 0.2 +
+            df['genera_leads'] * 0.1
         )
 
-        df_top = df_merged.sort_values("score", ascending=False).head(45)
-
-        return df_top
+        df = df.sort_values(by='score', ascending=False)
+        columnas = ['url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda',
+                    'dificultad', 'tráfico_estimado', 'genera_leads', 'score', 'Cluster', 'Sub-cluster (si aplica)']
+        columnas_presentes = [col for col in columnas if col in df.columns]
+        return df[columnas_presentes]
 
     except Exception as e:
-        raise ValueError(f"Error en filtrado: {e}")
+        raise ValueError(f"Error en filtrado: {str(e)}")
 
 
-def generar_keywords_por_cluster(df_top, df_auditoria):
+def generar_keywords_por_cluster(df_keywords, df_auditoria):
     try:
-        # Aseguramos que 'Cluster', 'Sub-cluster (si aplica)' y 'Etapa del funnel' están disponibles
-        if not all(col in df_auditoria.columns for col in ["Cluster", "Sub-cluster (si aplica)", "Etapa del funnel"]):
-            raise ValueError("Las columnas requeridas ('Cluster', 'Sub-cluster (si aplica)', 'Etapa del funnel') no se encuentran en el archivo de auditoría.")
+        df_keywords = df_keywords.copy()
+        df_auditoria = df_auditoria.copy()
 
-        # Unimos con auditoría para obtener las columnas necesarias
-        df_top = pd.merge(df_top, df_auditoria[["URL", "Cluster", "Sub-cluster (si aplica)", "Etapa del funnel"]],
-                          left_on="url", right_on="URL", how="left")
+        df_auditoria = df_auditoria.rename(columns={
+            'URL': 'url'
+        })
+
+        df = pd.merge(df_keywords, df_auditoria[['url', 'Cluster', 'Sub-cluster (si aplica)']], on='url', how='left')
+        df.dropna(subset=['Cluster'], inplace=True)
 
         resultados = []
 
-        for (cluster, subcluster, etapa), grupo in df_top.groupby(["Cluster", "Sub-cluster (si aplica)", "Etapa del funnel"]):
+        for (cluster, subcluster), grupo in df.groupby(['Cluster', 'Sub-cluster (si aplica)']):
+            corpus = grupo['palabra_clave'].dropna().astype(str).tolist()
+            if len(corpus) < 2:
+                continue
+
             vectorizer = TfidfVectorizer(stop_words='spanish', max_features=10)
-            X = vectorizer.fit_transform(grupo["palabra_clave"])
-            terms = vectorizer.get_feature_names_out()
-            resultados.append({
-                "Cluster": cluster,
-                "Subcluster": subcluster,
-                "Etapa del funnel": etapa,
-                "Keywords sugeridas": ", ".join(terms)
-            })
+            X = vectorizer.fit_transform(corpus)
+
+            n_clusters = min(3, len(corpus))
+            kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
+            kmeans.fit(X)
+
+            top_keywords = vectorizer.get_feature_names_out()
+
+            for palabra in top_keywords:
+                resultados.append({
+                    'Cluster': cluster,
+                    'Sub-cluster (si aplica)': subcluster,
+                    'Palabra clave sugerida': palabra
+                })
 
         return pd.DataFrame(resultados)
 
     except Exception as e:
-        raise ValueError(f"Error en generación de keywords: {e}")
+        raise ValueError(f"Error en generación de keywords: {str(e)}")
