@@ -71,7 +71,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     ]
     return df_resultado[columnas_finales]
     
-ef generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
+def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
     # Unificar y limpiar keywords existentes
     contenidos_existentes = pd.concat([
         df_analisis['palabra_clave'].astype(str).str.lower(),
