@@ -12,6 +12,10 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
 
     df = pd.merge(df_analisis, df_auditoria, how='inner', on='url')
 
+    # Convertir columnas clave a numéricas
+    for col in ['posición_promedio', 'volumen_de_búsqueda', 'dificultad', 'tráfico_estimado', 'leads 90 d']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
     # Filtros básicos
     df = df[df['posición_promedio'] > 3]
     df = df[df['posición_promedio'] <= 20]
@@ -45,7 +49,6 @@ def generar_keywords_por_cluster(df_analisis, df_auditoria, top_n=5):
     df_auditoria.columns = [col.lower().strip() for col in df_auditoria.columns]
     df_analisis.columns = [col.lower().strip() for col in df_analisis.columns]
 
-    # Agrupar por cluster y subcluster
     agrupado = df_auditoria.groupby(['cluster', 'sub-cluster (si aplica)', 'funnel'])
 
     for (cluster, subcluster, funnel), grupo in agrupado:
@@ -73,7 +76,7 @@ def generar_keywords_por_cluster(df_analisis, df_auditoria, top_n=5):
         for palabra, score in ranking:
             resultados.append({
                 'cluster': cluster,
-                'subcluster': subcluster,
+                'sub-cluster (si aplica)': subcluster,
                 'palabra_clave_sugerida': palabra,
                 'funnel': funnel
             })
