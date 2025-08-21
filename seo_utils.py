@@ -1,11 +1,11 @@
 import pandas as pd
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    # Normalizar nombres de columnas (solo espacios y minúsculas)
+    # Normalizar nombres de columnas (quitar espacios al inicio/fin)
     df_analisis.columns = df_analisis.columns.str.strip()
     df_auditoria.columns = df_auditoria.columns.str.strip()
 
-    # Validación de columnas esperadas en df_analisis (primer archivo)
+    # Validar columnas requeridas del primer archivo
     columnas_analisis = [
         "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda",
         "dificultad", "tráfico_estimado", "tipo_de_contenido"
@@ -14,7 +14,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         if col not in df_analisis.columns:
             raise ValueError(f"Falta la columna requerida en df_analisis: {col}")
 
-    # Validación de columnas esperadas en df_auditoria (segundo archivo)
+    # Validar columnas requeridas del segundo archivo
     columnas_auditoria = [
         "URL", "Cluster", "Sub-cluster (si aplica)", "Leads 90 d"
     ]
@@ -22,18 +22,17 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         if col not in df_auditoria.columns:
             raise ValueError(f"Falta la columna requerida en df_auditoria: {col}")
 
-    # Normalizar URLs para que coincidan
+    # Homologar formato de URLs
     df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
     df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-    # Renombrar columnas de auditoría SOLO PARA TRABAJO INTERNO
+    # Renombrar solo lo necesario para trabajar internamente
     df_auditoria = df_auditoria.rename(columns={
         "URL": "url",
-        "Leads 90 d": "genera_leads",
-        "Sub-cluster (si aplica)": "subcluster",
+        "Leads 90 d": "genera_leads"
     })
 
-    # Combinar ambos DataFrames por la columna 'url'
+    # Unir los dataframes por URL
     df = pd.merge(df_analisis, df_auditoria, on="url", how="inner")
 
     # Asegurar que las columnas numéricas estén en formato correcto
@@ -43,7 +42,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
 
     df["genera_leads"] = pd.to_numeric(df["genera_leads"], errors="coerce").fillna(0)
 
-    # Calcular score de optimización (puedes ajustar los pesos si lo deseas)
+    # Calcular score de optimización
     df["score"] = (
         (1 / (df["posición_promedio"] + 1)) * 0.3 +
         (df["volumen_de_búsqueda"] / df["volumen_de_búsqueda"].max()) * 0.3 +
@@ -52,10 +51,10 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         (df["genera_leads"] > 0).astype(int) * 0.1
     )
 
-    # Filtrar y ordenar por score
+    # Ordenar por score y tomar los mejores 45
     df_resultado = df.sort_values(by="score", ascending=False).head(45)
 
-    # Renombrar columnas SOLO para visualización
+    # Renombrar columnas para visualización únicamente
     df_resultado = df_resultado.rename(columns={
         "palabra_clave": "Palabra Clave",
         "volumen_de_búsqueda": "Volumen",
@@ -63,7 +62,7 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         "dificultad": "Dificultad",
         "genera_leads": "Genera Leads",
         "Cluster": "Cluster",
-        "subcluster": "Subcluster",
+        "Sub-cluster (si aplica)": "Subcluster",
         "score": "Score"
     })
 
