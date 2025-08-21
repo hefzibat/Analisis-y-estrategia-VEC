@@ -1,95 +1,129 @@
 import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.cluster import KMeans
-import numpy as np
 
-# ------------------------------
-# FUNCIÓN 1: Filtrar contenidos con potencial
-# ------------------------------
+def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
+    # Limpiar nombres de columnas
+    df_analisis.columns = df_analisis.columns.str.strip()
+    df_auditoria.columns = df_auditoria.columns.str.strip()
 
-def filtrar_contenidos_con_potencial(df):
-    # Normaliza nombres de columnas por si vienen con mayúsculas o espacios
-    df.columns = df.columns.str.strip().str.lower()
+    # Validar columnas necesarias
+    columnas_analisis = [
+        "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda",
+        "dificultad", "tráfico_estimado", "tipo_de_contenido"
+    ]
+    columnas_auditoria = [
+        "URL", "Cluster", "Sub-cluster (si aplica)", "Leads 90 d"
+    ]
+    for col in columnas_analisis:
+        if col not in df_analisis.columns:
+            raise ValueError(f"Falta la columna requerida en df_analisis: {col}")
+    for col in columnas_auditoria:
+        if col not in df_auditoria.columns:
+            raise ValueError(f"Falta la columna requerida en df_auditoria: {col}")
 
-    required_cols = ['url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda', 'dificultad', 'tráfico_estimado']
-    for col in required_cols:
-        if col not in df.columns:
-            raise ValueError(f"Falta la columna requerida: {col}")
+    # Homologar URLs
+    df_analisis["url"] = df_analisis["url"].str.lower().str.strip()
+    df_auditoria["URL"] = df_auditoria["URL"].str.lower().str.strip()
 
-    # Cálculo de un score combinado (puedes ajustar pesos si lo deseas)
-    df['score_optimizacion'] = (
-        (1 / (df['posición_promedio'] + 1)) * 0.4 + 
-        (df['volumen_de_búsqueda'] / (df['volumen_de_búsqueda'].max() + 1)) * 0.3 +
-        (df['tráfico_estimado'] / (df['tráfico_estimado'].max() + 1)) * 0.3
+    # Renombrar columnas para merge
+    df_auditoria = df_auditoria.rename(columns={
+        "URL": "url",
+        "Leads 90 d": "genera_leads"
+    })
+
+    # Conservar columnas útiles
+    columnas_utiles = ["url", "Cluster", "Sub-cluster (si aplica)", "genera_leads"]
+    df_auditoria = df_auditoria[columnas_utiles]
+
+    # Hacer merge
+    df = pd.merge(df_analisis, df_auditoria, on="url", how="inner")
+
+    # Convertir a numérico
+    for col in ["posición_promedio", "volumen_de_búsqueda", "dificultad", "tráfico_estimado"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df["genera_leads"] = pd.to_numeric(df["genera_leads"], errors="coerce").fillna(0)
+
+    # Calcular score
+    df["score"] = (
+        (1 / (df["posición_promedio"] + 1)) * 0.3 +
+        (df["volumen_de_búsqueda"] / df["volumen_de_búsqueda"].max()) * 0.3 +
+        (df["tráfico_estimado"] / df["tráfico_estimado"].max()) * 0.2 +
+        (1 - df["dificultad"] / 100) * 0.1 +
+        (df["genera_leads"] > 0).astype(int) * 0.1
     )
 
-    # Filtramos los que tienen más potencial: top 40 (ajustable)
-    df_optimizables = df.sort_values(by='score_optimizacion', ascending=False).head(40).copy()
+    df_resultado = df.sort_values(by="score", ascending=False).head(45)
 
-    return df_optimizables
+    # Renombrar columnas solo para visualización
+    df_resultado = df_resultado.rename(columns={
+        "palabra_clave": "Palabra Clave",
+        "volumen_de_búsqueda": "Volumen",
+        "tráfico_estimado": "Tráfico",
+        "dificultad": "Dificultad",
+        "genera_leads": "Genera Leads",
+        "score": "Score"
+    })
 
+    # Seleccionar columnas a mostrar
+    columnas_finales = [
+        "url", "Palabra Clave", "Cluster", "Sub-cluster (si aplica)",
+        "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
+    ]
+    return df_resultado[columnas_finales]
+    from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import normalize
+from collections import defaultdict
 
-# ------------------------------
-# FUNCIÓN 2: Generar nuevas keywords por cluster y subcluster
-# ------------------------------
+def generar_keywords_por_cluster(df, top_n=10):
+    """
+    Genera nuevas palabras clave usando TF-IDF, agrupadas por cluster y subcluster.
+    También asigna etapa del funnel según el tipo de contenido.
 
-def generar_keywords_por_cluster(df):
-    df.columns = df.columns.str.strip().str.lower()
+    Parámetros:
+    - df: DataFrame combinado con columnas ['palabra_clave', 'cluster', 'subcluster', 'tipo_de_contenido']
+    - top_n: número de palabras clave sugeridas por grupo
 
-    # Verificamos que estén todas las columnas necesarias
-    for col in ['palabra_clave', 'cluster', 'sub-cluster', 'tipo_de_contenido']:
-        if col not in df.columns:
-            raise ValueError(f"Falta la columna requerida: {col}")
+    Retorna:
+    - DataFrame con columnas ['cluster', 'subcluster', 'palabra_clave_sugerida', 'funnel']
+    """
+    resultado = []
 
-    resultados = []
+    if df.isnull().any().any():
+        df = df.dropna(subset=['palabra_clave', 'cluster', 'subcluster'])
 
-    # Agrupamos por cluster y sub-cluster
-    agrupaciones = df.groupby(['cluster', 'sub-cluster'])
+    agrupado = df.groupby(['cluster', 'subcluster'])
 
-    for (cluster, subcluster), grupo in agrupaciones:
-        palabras = grupo['palabra_clave'].dropna().astype(str).tolist()
-
-        if len(palabras) < 2:
+    for (cluster, subcluster), grupo in agrupado:
+        corpus = grupo['palabra_clave'].dropna().astype(str).tolist()
+        if not corpus:
             continue
 
-        # Vectorización TF-IDF
-        vectorizer = TfidfVectorizer(stop_words='spanish', max_features=30)
-        tfidf_matrix = vectorizer.fit_transform(palabras)
+        vectorizer = TfidfVectorizer(stop_words='spanish')
+        X = vectorizer.fit_transform(corpus)
+        X_norm = normalize(X, norm='l1', axis=1)
+        tfidf_scores = X_norm.sum(axis=0).A1
         vocabulario = vectorizer.get_feature_names_out()
+        ranking = sorted(zip(vocabulario, tfidf_scores), key=lambda x: x[1], reverse=True)
 
-        # Aplicamos clustering KMeans con número limitado de grupos
-        n_clusters = min(3, len(palabras))  # para evitar errores con pocos datos
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
-        kmeans.fit(tfidf_matrix)
+        # Determinar funnel según tipo de contenido más frecuente
+        funnel = grupo['tipo_de_contenido'].mode().iloc[0] if 'tipo_de_contenido' in grupo else 'desconocido'
+        funnel = _mapear_funnel(funnel)
 
-        for i in range(n_clusters):
-            indices = np.where(kmeans.labels_ == i)[0]
-            cluster_palabras = [palabras[idx] for idx in indices]
-            cluster_keywords = list(set(" ".join(cluster_palabras).split()))
-            keywords_sugeridas = list(set([kw for kw in cluster_keywords if kw in vocabulario]))
+        for palabra, score in ranking[:top_n]:
+            resultado.append({
+                'cluster': cluster,
+                'subcluster': subcluster,
+                'palabra_clave_sugerida': palabra,
+                'funnel': funnel
+            })
 
-            if keywords_sugeridas:
-                resultados.append({
-                    'Cluster': cluster,
-                    'Subcluster': subcluster,
-                    'Palabras clave sugeridas': ", ".join(keywords_sugeridas),
-                    'Etapa del funnel': inferir_etapa_funnel(subcluster)
-                })
+    return pd.DataFrame(resultado)
 
-    return pd.DataFrame(resultados)
-
-
-# ------------------------------
-# FUNCIÓN AUXILIAR: Inferir etapa del funnel (según subcluster)
-# ------------------------------
-
-def inferir_etapa_funnel(subcluster):
-    subcluster = str(subcluster).lower()
-    if any(x in subcluster for x in ['introducción', 'conceptos', 'qué es', 'tendencias', 'guía']):
-        return 'TOFU'
-    elif any(x in subcluster for x in ['estrategias', 'comparativa', 'tipos', 'herramientas']):
-        return 'MOFU'
-    elif any(x in subcluster for x in ['caso', 'servicio', 'beneficio', 'certificación']):
-        return 'BOFU'
-    else:
-        return 'MOFU'
+def _mapear_funnel(tipo):
+    tipo = tipo.lower()
+    if any(x in tipo for x in ['ebook', 'infografía', 'blog']):
+        return 'ToFu'
+    elif any(x in tipo for x in ['caso', 'webinar', 'checklist']):
+        return 'MoFu'
+    elif any(x in tipo for x in ['demo', 'servicio', 'cotización']):
+        return 'BoFu'
+    return 'desconocido'
