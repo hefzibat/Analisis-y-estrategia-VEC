@@ -5,37 +5,40 @@ from seo_utils import (
     generar_keywords_por_cluster
 )
 
-st.set_page_config(page_title="Análisis SEO Estratégico", layout="wide")
+st.set_page_config(layout="wide")
 
-st.title("🔍 Análisis y estrategia SEO - VEC")
+st.title("🔍 Análisis y estrategia de contenidos")
 
-st.markdown("Cargue los archivos para comenzar el análisis:")
+uploaded_file = st.file_uploader("Sube tu archivo de análisis (.csv o .xlsx)", type=["csv", "xlsx"])
+uploaded_auditoria = st.file_uploader("Sube tu archivo de auditoría (.csv o .xlsx)", type=["csv", "xlsx"])
 
-archivo_analisis = st.file_uploader("📄 Archivo de Análisis (Excel)", type=["xlsx"])
-archivo_auditoria = st.file_uploader("📄 Archivo de Auditoría (CSV)", type=["csv"])
-
-if archivo_analisis and archivo_auditoria:
+if uploaded_file and uploaded_auditoria:
     try:
-        df_analisis = pd.read_excel(archivo_analisis)
-        df_auditoria = pd.read_csv(archivo_auditoria)
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file, engine='openpyxl')
 
-        st.header("1️⃣ Contenidos con potencial para optimizar")
-        try:
-            df_contenidos = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
-            st.success("✅ Análisis completado")
-            st.dataframe(df_contenidos, use_container_width=True)
-        except Exception as e:
-            st.error(f"❌ Error en filtrado: {e}")
+        if uploaded_auditoria.name.endswith('.csv'):
+            df_aud = pd.read_csv(uploaded_auditoria)
+        else:
+            df_aud = pd.read_excel(uploaded_auditoria, engine='openpyxl')
 
-        st.header("2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
+        # ✅ Parte 1
+        st.subheader("1️⃣ Contenidos con potencial para optimizar")
         try:
-            df_keywords = generar_keywords_por_cluster(df_analisis, df_auditoria)
-            st.success("✅ Sugerencias generadas")
-            st.dataframe(df_keywords, use_container_width=True)
+            df_filtrado = filtrar_contenidos_con_potencial(df)
+            st.write(df_filtrado)
         except Exception as e:
-            st.error(f"❌ Error en generación de keywords: {e}")
+            st.error(f"❌ Error al procesar los archivos: {e}")
+
+        # ✅ Parte 2
+        st.subheader("2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
+        try:
+            df_keywords = generar_keywords_por_cluster(df_aud)
+            st.write(df_keywords)
+        except Exception as e:
+            st.error(f"❌ Error al procesar los archivos: {e}")
 
     except Exception as e:
-        st.error(f"❌ Error al procesar los archivos: {e}")
-else:
-    st.warning("⚠️ Por favor, cargue ambos archivos para comenzar el análisis.")
+        st.error(f"❌ Error al leer los archivos: {e}")
