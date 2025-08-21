@@ -1,88 +1,81 @@
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-import numpy as np
 
-# ------------------------ FUNCIÓN 1: FILTRAR CONTENIDOS CON POTENCIAL ------------------------
-
-def filtrar_contenidos_con_potencial(df_seo, df_auditoria):
-    df_seo = df_seo.copy()
+def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
+    df_analisis = df_analisis.copy()
     df_auditoria = df_auditoria.copy()
 
-    df_seo.rename(columns=lambda x: x.strip().lower(), inplace=True)
-    df_auditoria.rename(columns=lambda x: x.strip().lower(), inplace=True)
+    # Normalizar columnas de auditoría para unirlas
+    df_auditoria.columns = [col.lower().strip() for col in df_auditoria.columns]
+    df_analisis.columns = [col.lower().strip() for col in df_analisis.columns]
 
-    # Renombrar columnas para uso interno (sin afectar nombres reales)
-    df_seo.rename(columns={
-        'url': 'url',
-        'palabra_clave': 'palabra_clave',
-        'posición_promedio': 'posicion',
-        'volumen_de_búsqueda': 'volumen',
-        'dificultad': 'dificultad',
-        'tráfico_estimado': 'trafico'
-    }, inplace=True)
+    df = pd.merge(df_analisis, df_auditoria, how='inner', on='url')
 
-    df_auditoria.rename(columns={
-        'url': 'url',
-        'leads 90 d': 'genera_leads',
-        'tipo de contenido': 'tipo_contenido',
-        'cluster': 'cluster',
-        'sub-cluster (si aplica)': 'subcluster'
-    }, inplace=True)
+    # Filtros básicos
+    df = df[df['posición_promedio'] > 3]
+    df = df[df['posición_promedio'] <= 20]
+    df = df[df['tráfico_estimado'] > 0]
+    df = df[df['leads 90 d'] > 0]
 
-    df_auditoria['genera_leads'] = pd.to_numeric(df_auditoria['genera_leads'], errors='coerce').fillna(0)
+    # Calcular score de optimización (simplificado)
+    df['score_optimización'] = (
+        (21 - df['posición_promedio']) * 0.4 +
+        df['volumen_de_búsqueda'] * 0.2 +
+        (1 / (df['dificultad'] + 1)) * 0.1 +
+        df['tráfico_estimado'] * 0.2 +
+        df['leads 90 d'] * 0.1
+    )
 
-    df_merged = pd.merge(df_seo, df_auditoria, on='url', how='inner')
+    df = df.sort_values(by='score_optimización', ascending=False)
 
-    df_merged = df_merged[(df_merged['posicion'] > 4) & (df_merged['posicion'] <= 20)]
-    df_merged = df_merged[df_merged['trafico'] > 0]
-    df_merged = df_merged[df_merged['genera_leads'] > 0]
+    columnas_resultado = [
+        'url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda',
+        'dificultad', 'tráfico_estimado', 'tipo_de_contenido', 'cluster',
+        'sub-cluster (si aplica)', 'funnel', 'leads 90 d', 'score_optimización'
+    ]
 
-    df_merged['score'] = (1 / df_merged['posicion']) * np.log1p(df_merged['volumen']) * np.log1p(df_merged['trafico']) * (df_merged['genera_leads'] + 1)
-
-    columnas_finales = ['url', 'palabra_clave', 'posicion', 'volumen', 'dificultad', 'trafico', 'genera_leads', 'tipo_contenido', 'cluster', 'subcluster', 'score']
-    df_resultado = df_merged[columnas_finales].sort_values(by='score', ascending=False)
-
-    return df_resultado
+    return df[columnas_resultado].head(40)
 
 
-# ------------------------ FUNCIÓN 2: GENERAR SUGERENCIAS DE NUEVAS KEYWORDS ------------------------
-
-def generar_keywords_por_cluster(df_seo, df_auditoria, top_n=5):
-    df_seo = df_seo.copy()
-    df_auditoria = df_auditoria.copy()
-
-    df_seo.rename(columns=lambda x: x.strip().lower(), inplace=True)
-    df_auditoria.rename(columns=lambda x: x.strip().lower(), inplace=True)
-
-    df_merged = pd.merge(df_seo, df_auditoria, on='url', how='inner')
-
-    if 'cluster' not in df_merged.columns or 'sub-cluster (si aplica)' not in df_merged.columns:
-        raise ValueError("Faltan las columnas 'cluster' o 'sub-cluster (si aplica)' en el archivo de auditoría.")
-
+def generar_keywords_por_cluster(df_analisis, df_auditoria, top_n=5):
     resultados = []
 
-    grouped = df_merged.groupby(['cluster', 'sub-cluster (si aplica)'])
+    # Normalizar columnas
+    df_auditoria.columns = [col.lower().strip() for col in df_auditoria.columns]
+    df_analisis.columns = [col.lower().strip() for col in df_analisis.columns]
 
-    for (cluster, subcluster), grupo in grouped:
-        palabras = grupo['palabra_clave'].dropna().astype(str).tolist()
+    # Agrupar por cluster y subcluster
+    agrupado = df_auditoria.groupby(['cluster', 'sub-cluster (si aplica)', 'funnel'])
 
-        if not palabras:
+    for (cluster, subcluster, funnel), grupo in agrupado:
+        urls = grupo['url'].dropna().unique()
+        textos = df_analisis[df_analisis['url'].isin(urls)]['palabra_clave'].dropna().astype(str)
+
+        if len(textos) < 2:
             continue
 
-        vectorizer = TfidfVectorizer(stop_words='spanish', ngram_range=(1, 2))
-        X = vectorizer.fit_transform(palabras)
-        tfidf_scores = X.sum(axis=0).A1
-        palabras_unicas = vectorizer.get_feature_names_out()
+        vectorizer = TfidfVectorizer(stop_words='spanish')
+        X = vectorizer.fit_transform(textos)
+        kmeans = KMeans(n_clusters=min(len(textos), 3), random_state=0)
+        kmeans.fit(X)
 
-        ranking = sorted(zip(palabras_unicas, tfidf_scores), key=lambda x: x[1], reverse=True)[:top_n]
+        terms = vectorizer.get_feature_names_out()
+        order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
+
+        palabras_sugeridas = []
+        for i in range(kmeans.n_clusters):
+            for ind in order_centroids[i, :top_n]:
+                palabras_sugeridas.append(terms[ind])
+
+        ranking = pd.Series(palabras_sugeridas).value_counts().head(top_n).items()
 
         for palabra, score in ranking:
             resultados.append({
-                'Cluster': cluster,
-                'Sub-cluster (si aplica)': subcluster,
-                'Palabra clave sugerida': palabra,
-                'Funnel': 'Consideración'  # Valor fijo por ahora
+                'cluster': cluster,
+                'subcluster': subcluster,
+                'palabra_clave_sugerida': palabra,
+                'funnel': funnel
             })
 
     return pd.DataFrame(resultados)
