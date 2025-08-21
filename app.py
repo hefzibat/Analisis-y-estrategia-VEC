@@ -5,36 +5,55 @@ from seo_utils import (
     generar_keywords_por_cluster
 )
 
-st.set_page_config(page_title="Análisis y Estrategia SEO - VEC", layout="wide")
-st.title("🔍 Análisis y Estrategia SEO - VEC")
+st.set_page_config(page_title="Análisis SEO y estrategia de contenidos", layout="wide")
 
-st.sidebar.header("Carga de archivos")
-archivo_seo = st.sidebar.file_uploader("Sube el archivo SEO (.xlsx o .csv)", type=["xlsx", "csv"])
-archivo_auditoria = st.sidebar.file_uploader("Sube el archivo de auditoría (.xlsx o .csv)", type=["xlsx", "csv"])
+st.title("🔍 Análisis SEO y estrategia de contenidos")
 
-def leer_archivo(archivo):
+st.markdown("---")
+
+# Subida de archivos
+st.header("📁 Carga de archivos")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    archivo_analisis = st.file_uploader("Sube el archivo de análisis SEO (CSV o Excel)", type=["csv", "xls", "xlsx"])
+
+with col2:
+    archivo_auditoria = st.file_uploader("Sube el archivo de auditoría (CSV o Excel)", type=["csv", "xls", "xlsx"])
+
+# Leer los archivos
+def cargar_archivo(archivo):
+    if archivo is None:
+        return None
     if archivo.name.endswith(".csv"):
         return pd.read_csv(archivo)
     else:
         return pd.read_excel(archivo)
 
-if archivo_seo and archivo_auditoria:
+df_analisis = cargar_archivo(archivo_analisis)
+df_auditoria = cargar_archivo(archivo_auditoria)
+
+# Análisis Parte 1
+st.markdown("### 1️⃣ Contenidos con potencial para optimizar")
+
+if df_analisis is not None and df_auditoria is not None:
     try:
-        df_seo = leer_archivo(archivo_seo)
-        df_auditoria = leer_archivo(archivo_auditoria)
-
-        # Parte 1
-        st.subheader("✅ Parte 1: Contenidos con potencial")
-        resultados_1 = filtrar_contenidos_con_potencial(df_seo, df_auditoria)
-        st.dataframe(resultados_1, use_container_width=True)
-
-        # Parte 2
-        st.subheader("✨ Parte 2: Palabras clave sugeridas por cluster y etapa del funnel")
-        resultados_2 = generar_keywords_por_cluster(df_seo, df_auditoria)
-        st.dataframe(resultados_2, use_container_width=True)
-
+        df_resultados = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
+        st.success("✅ Contenidos con potencial identificados correctamente.")
+        st.dataframe(df_resultados)
     except Exception as e:
-        st.error(f"❌ Error al procesar los archivos: {str(e)}")
-
+        st.error(f"❌ Error al procesar los archivos: {e}")
 else:
-    st.info("⬅️ Por favor, sube ambos archivos para comenzar el análisis.")
+    st.info("🔎 Sube ambos archivos para comenzar el análisis.")
+
+# Análisis Parte 2
+st.markdown("### 2️⃣ Palabras clave sugeridas por cluster y etapa del funnel")
+
+if df_analisis is not None and df_auditoria is not None:
+    try:
+        df_keywords = generar_keywords_por_cluster(df_analisis, df_auditoria)
+        st.success("✅ Palabras clave sugeridas generadas correctamente.")
+        st.dataframe(df_keywords)
+    except Exception as e:
+        st.error(f"❌ Error al procesar los archivos: {e}")
