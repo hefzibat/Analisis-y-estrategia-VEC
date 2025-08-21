@@ -156,37 +156,40 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     ]
 
     return df_resultado
-    def recomendar_mix_contenido(df_resultados):
+    
+    def recomendar_mix_contenido(df_sugerencias):
     import pandas as pd
 
-    # Validar columnas necesarias
-    if 'Canal sugerido' not in df_resultados.columns:
-        raise ValueError("La columna 'Canal sugerido' no está en el DataFrame.")
+    if df_sugerencias.empty:
+        return pd.DataFrame(columns=["Tipo de contenido", "Cantidad sugerida", "Objetivo asociado"])
 
-    # Conteo actual de canales sugeridos
-    conteo_actual = df_resultados['Canal sugerido'].value_counts().to_dict()
+    total_sugerencias = len(df_sugerencias)
 
-    # Estrategia sugerida (personalizable según tus objetivos de conversión)
-    # Objetivo: Visibilidad (Blog), Captura (Lead Magnet), Nutrición (Email)
-    estrategia_ideal = {
-        "Blog": 60,
-        "Lead Magnet": 25,
-        "Email": 10,
-        "Herramienta con IA": 5
+    # Definir porcentajes sugeridos por tipo de canal
+    mix_porcentaje = {
+        "blog": 0.5,
+        "lead magnet": 0.2,
+        "email": 0.15,
+        "herramienta de ia": 0.1,
+        "flujo": 0.05
     }
 
-    total = len(df_resultados)
-    resumen = []
+    # Objetivos asociados
+    objetivos = {
+        "blog": "Aumentar visitantes",
+        "lead magnet": "Incrementar leads",
+        "email": "Convertir leads a MQL",
+        "herramienta de ia": "Captación con valor",
+        "flujo": "Nutrición y automatización"
+    }
 
-    for canal, porcentaje_ideal in estrategia_ideal.items():
-        actual = conteo_actual.get(canal, 0)
-        ideal = round(total * (porcentaje_ideal / 100))
-        diferencia = ideal - actual
-        resumen.append({
-            "Canal": canal,
-            "Contenidos actuales": actual,
-            "Meta sugerida": ideal,
-            "¿Faltan o sobran?": diferencia if diferencia != 0 else "OK"
+    resultado = []
+    for tipo, porcentaje in mix_porcentaje.items():
+        cantidad = round(total_sugerencias * porcentaje)
+        resultado.append({
+            "Tipo de contenido": tipo,
+            "Cantidad sugerida": cantidad,
+            "Objetivo asociado": objetivos[tipo]
         })
 
-    return pd.DataFrame(resumen)
+    return pd.DataFrame(resultado)
