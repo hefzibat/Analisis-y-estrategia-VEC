@@ -20,15 +20,8 @@ if archivo_analisis and archivo_auditoria:
         else:
             df_analisis = pd.read_excel(archivo_analisis)
 
-        # Diagnóstico de columnas antes de normalizar
-        st.write("🔍 Columnas originales en archivo de análisis:")
-        st.write(list(df_analisis.columns))
-
-        # Normalizar columnas
-        df_analisis.columns = df_analisis.columns.str.upper().str.strip()
-
-        # Diagnóstico después de normalizar
-        st.write("✅ Columnas estandarizadas en archivo de análisis:")
+        # Mostrar columnas originales del archivo de análisis
+        st.write("🔍 Columnas en archivo de análisis:")
         st.write(list(df_analisis.columns))
 
         # Cargar archivo de auditoría
@@ -37,8 +30,9 @@ if archivo_analisis and archivo_auditoria:
         else:
             df_auditoria = pd.read_excel(archivo_auditoria)
 
-        # Normalizar columnas del archivo de auditoría también
-        df_auditoria.columns = df_auditoria.columns.str.upper().str.strip()
+        # Mostrar columnas originales del archivo de auditoría
+        st.write("🔍 Columnas en archivo de auditoría:")
+        st.write(list(df_auditoria.columns))
 
         # --- ANÁLISIS PARTE 1 ---
         st.subheader("1. Contenidos con potencial")
