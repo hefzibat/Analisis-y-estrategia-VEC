@@ -72,7 +72,10 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     return df_resultado[columnas_finales]
     
 def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
-    # Unificar y limpiar keywords existentes
+    import random
+    import pandas as pd
+
+    # 1. Unificar y limpiar keywords existentes
     contenidos_existentes = pd.concat([
         df_analisis['palabra_clave'].astype(str).str.lower(),
         df_auditoria['Título'].astype(str).str.lower()
@@ -84,7 +87,7 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     if not keywords_nuevas:
         return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido", "Cluster", "Subcluster"])
 
-    # Plantillas variadas
+    # 2. Plantillas variadas
     plantillas = [
         "Cómo implementar {kw} en tu empresa",
         "Guía esencial para entender {kw}",
@@ -98,33 +101,46 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
         "Claves para optimizar {kw} en tu negocio"
     ]
 
+    # 3. Clasificación del canal según intención y objetivo
     def sugerir_canal(kw):
         kw = kw.lower()
         if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
             return "Herramienta con IA"
-        elif any(x in kw for x in ["ebook", "guía", "checklist", "manual", "tips", "educación", "curso"]):
+        elif any(x in kw for x in ["descargable", "ebook", "guía", "checklist", "manual", "formato", "template", "caso de éxito"]):
             return "Lead Magnet"
-        elif any(x in kw for x in ["email", "newsletter", "suscriptores", "correos"]):
+        elif any(x in kw for x in ["email", "newsletter", "suscriptores", "correos", "embudo"]):
             return "Email"
+        elif any(x in kw for x in ["formación", "diplomado", "curso", "capacitación", "certificación"]):
+            return random.choice(["Lead Magnet", "Email"])
         else:
-            # 60% blog, 20% lead magnet, 10% email, 10% herramienta IA
+            # Distribución pensada en objetivos: 60% blog, 20% lead magnet, 10% email, 10% herramienta IA
             return random.choices(
                 ["Blog", "Lead Magnet", "Email", "Herramienta con IA"],
                 weights=[60, 20, 10, 10],
                 k=1
             )[0]
 
+    # 4. Mapeo de clusters por coincidencia textual
+    def clasificar_cluster(kw):
+        for _, row in df_auditoria.iterrows():
+            if isinstance(row['Cluster'], str) and isinstance(row['Sub-cluster (si aplica)'], str):
+                if row['Cluster'].lower() in kw or row['Sub-cluster (si aplica)'].lower() in kw:
+                    return row['Cluster'], row['Sub-cluster (si aplica)']
+        return "Otros", "Otros"
+
+    # 5. Resultados
     resultados = []
     for kw in keywords_nuevas:
         plantilla = random.choice(plantillas)
         titulo = plantilla.format(kw=kw)
         canal = sugerir_canal(kw)
+        cluster, subcluster = clasificar_cluster(kw)
 
         resultados.append({
             "Palabra clave": kw,
             "Título sugerido": titulo,
-            "Cluster": "Negocios & Finanzas",       # si quieres usar otros, podemos mapear
-            "Subcluster": "Finanzas & Mercados",    # podemos mapear por keyword
+            "Cluster": cluster,
+            "Subcluster": subcluster,
             "Canal sugerido": canal
         })
 
