@@ -1,4 +1,6 @@
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import normalize
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     # Limpiar nombres de columnas
@@ -69,21 +71,11 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
     ]
     return df_resultado[columnas_finales]
-    from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import normalize
-from collections import defaultdict
 
 def generar_keywords_por_cluster(df, top_n=10):
     """
     Genera nuevas palabras clave usando TF-IDF, agrupadas por cluster y subcluster.
     También asigna etapa del funnel según el tipo de contenido.
-
-    Parámetros:
-    - df: DataFrame combinado con columnas ['palabra_clave', 'cluster', 'subcluster', 'tipo_de_contenido']
-    - top_n: número de palabras clave sugeridas por grupo
-
-    Retorna:
-    - DataFrame con columnas ['cluster', 'subcluster', 'palabra_clave_sugerida', 'funnel']
     """
     resultado = []
 
@@ -104,7 +96,6 @@ def generar_keywords_por_cluster(df, top_n=10):
         vocabulario = vectorizer.get_feature_names_out()
         ranking = sorted(zip(vocabulario, tfidf_scores), key=lambda x: x[1], reverse=True)
 
-        # Determinar funnel según tipo de contenido más frecuente
         funnel = grupo['tipo_de_contenido'].mode().iloc[0] if 'tipo_de_contenido' in grupo else 'desconocido'
         funnel = _mapear_funnel(funnel)
 
