@@ -69,78 +69,90 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
         "Volumen", "Tráfico", "Dificultad", "Genera Leads", "Score"
     ]
     return df_resultado[columnas_finales]
-
+    
 def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_externas):
-    import random
     import pandas as pd
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
 
-    # 1. Unificar y limpiar keywords existentes
-    contenidos_existentes = pd.concat([
-        df_analisis['palabra_clave'].astype(str).str.lower(),
-        df_auditoria['Título'].astype(str).str.lower()
-    ], axis=0).unique()
+    # Renombrar columna si viene como 'Keyword'
+    if 'Keyword' in df_keywords_externas.columns:
+        df_keywords_externas = df_keywords_externas.rename(columns={"Keyword": "palabra_clave"})
 
-    nuevas_keywords = df_keywords_externas['palabra_clave'].dropna().astype(str).str.lower().unique()
-    keywords_nuevas = [kw for kw in nuevas_keywords if not any(kw in contenido for contenido in contenidos_existentes)]
+    # Validar columnas necesarias
+    columnas_analisis = ['palabra_clave']
+    columnas_auditoria = ['Cluster', 'Sub-cluster (si aplica)']
+    columnas_externas = ['palabra_clave']
 
-    if not keywords_nuevas:
-        return pd.DataFrame(columns=["Palabra clave", "Título sugerido", "Canal sugerido", "Cluster", "Subcluster"])
+    for col in columnas_analisis:
+        if col not in df_analisis.columns:
+            raise ValueError(f"Falta columna en archivo de análisis: {col}")
+    for col in columnas_auditoria:
+        if col not in df_auditoria.columns:
+            raise ValueError(f"Falta columna en auditoría: {col}")
+    for col in columnas_externas:
+        if col not in df_keywords_externas.columns:
+            raise ValueError(f"Falta columna en keywords externas: {col}")
 
-    # 2. Plantillas variadas
-    plantillas = [
-        "Cómo implementar {kw} en tu empresa",
-        "Guía esencial para entender {kw}",
-        "Qué es {kw} y cómo usarlo con éxito",
-        "Tácticas efectivas para aplicar {kw}",
-        "Estrategia práctica para dominar {kw}",
-        "Checklist para mejorar en {kw}",
-        "Errores comunes al aplicar {kw} (y cómo evitarlos)",
-        "Cómo usar {kw} para impulsar tus resultados",
-        "¿Estás aprovechando {kw} como deberías?",
-        "Claves para optimizar {kw} en tu negocio"
+    # Preprocesar
+    df_analisis['palabra_clave'] = df_analisis['palabra_clave'].str.lower().str.strip()
+    df_keywords_externas['palabra_clave'] = df_keywords_externas['palabra_clave'].str.lower().str.strip()
+
+    # Filtrar keywords externas nuevas
+    keywords_actuales = df_analisis['palabra_clave'].unique()
+    df_nuevas = df_keywords_externas[~df_keywords_externas['palabra_clave'].isin(keywords_actuales)].copy()
+
+    if df_nuevas.empty:
+        return pd.DataFrame(columns=["Palabra Clave", "Título posible", "Cluster", "Subcluster", "Canal sugerido"])
+
+    # Similaridad para clusters y subclusters
+    df_nuevas['match_cluster'] = ''
+    df_nuevas['match_subcluster'] = ''
+
+    clusters = df_auditoria['Cluster'].dropna().unique()
+    subclusters = df_auditoria['Sub-cluster (si aplica)'].dropna().unique()
+
+    vectorizer = TfidfVectorizer().fit(list(df_nuevas['palabra_clave']) + list(clusters) + list(subclusters))
+    keyword_vecs = vectorizer.transform(df_nuevas['palabra_clave'])
+
+    if len(clusters) > 0:
+        cluster_vecs = vectorizer.transform(clusters)
+        sim_cluster = cosine_similarity(keyword_vecs, cluster_vecs)
+        best_cluster = sim_cluster.argmax(axis=1)
+        df_nuevas['match_cluster'] = [clusters[i] for i in best_cluster]
+
+    if len(subclusters) > 0:
+        subcluster_vecs = vectorizer.transform(subclusters)
+        sim_subcluster = cosine_similarity(keyword_vecs, subcluster_vecs)
+        best_subcluster = sim_subcluster.argmax(axis=1)
+        df_nuevas['match_subcluster'] = [subclusters[i] for i in best_subcluster]
+    else:
+        df_nuevas['match_subcluster'] = ''
+
+    def canal_sugerido(palabra):
+        palabra = palabra.lower()
+        if any(x in palabra for x in ["automatiza", "herramienta", "plantilla", "generador"]):
+            return "herramienta de ia"
+        elif any(x in palabra for x in ["flujo", "proceso", "etapas", "pasos"]):
+            return "flujo"
+        elif any(x in palabra for x in ["email", "newsletter", "correos"]):
+            return "email"
+        elif any(x in palabra for x in ["ebook", "guía", "checklist", "descargable"]):
+            return "lead magnet"
+        else:
+            return "blog"
+
+    df_nuevas['canal'] = df_nuevas['palabra_clave'].apply(canal_sugerido)
+    df_nuevas['titulo'] = df_nuevas['palabra_clave'].apply(lambda x: f"Cómo aprovechar {x} en tu estrategia")
+
+    df_resultado = df_nuevas.rename(columns={
+        'palabra_clave': 'Palabra Clave',
+        'match_cluster': 'Cluster',
+        'match_subcluster': 'Subcluster',
+        'canal': 'Canal sugerido',
+        'titulo': 'Título posible'
+    })[
+        ['Palabra Clave', 'Título posible', 'Cluster', 'Subcluster', 'Canal sugerido']
     ]
 
-    # 3. Clasificación del canal según intención y objetivo
-    def sugerir_canal(kw):
-        kw = kw.lower()
-        if any(x in kw for x in ["herramienta", "plantilla", "generador", "automatiza"]):
-            return "Herramienta con IA"
-        elif any(x in kw for x in ["descargable", "ebook", "guía", "checklist", "manual", "formato", "template", "caso de éxito"]):
-            return "Lead Magnet"
-        elif any(x in kw for x in ["email", "newsletter", "suscriptores", "correos", "embudo"]):
-            return "Email"
-        elif any(x in kw for x in ["formación", "diplomado", "curso", "capacitación", "certificación"]):
-            return random.choice(["Lead Magnet", "Email"])
-        else:
-            # Distribución pensada en objetivos: 60% blog, 20% lead magnet, 10% email, 10% herramienta IA
-            return random.choices(
-                ["Blog", "Lead Magnet", "Email", "Herramienta con IA"],
-                weights=[60, 20, 10, 10],
-                k=1
-            )[0]
-
-    # 4. Mapeo de clusters por coincidencia textual
-    def clasificar_cluster(kw):
-        for _, row in df_auditoria.iterrows():
-            if isinstance(row['Cluster'], str) and isinstance(row['Sub-cluster (si aplica)'], str):
-                if row['Cluster'].lower() in kw or row['Sub-cluster (si aplica)'].lower() in kw:
-                    return row['Cluster'], row['Sub-cluster (si aplica)']
-        return "Otros", "Otros"
-
-    # 5. Resultados
-    resultados = []
-    for kw in keywords_nuevas:
-        plantilla = random.choice(plantillas)
-        titulo = plantilla.format(kw=kw)
-        canal = sugerir_canal(kw)
-        cluster, subcluster = clasificar_cluster(kw)
-
-        resultados.append({
-            "Palabra clave": kw,
-            "Título sugerido": titulo,
-            "Cluster": cluster,
-            "Subcluster": subcluster,
-            "Canal sugerido": canal
-        })
-
-    return pd.DataFrame(resultados)
+    return df_resultado
