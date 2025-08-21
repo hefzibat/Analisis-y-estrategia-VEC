@@ -156,3 +156,37 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     ]
 
     return df_resultado
+    def recomendar_mix_contenido(df_resultados):
+    import pandas as pd
+
+    # Validar columnas necesarias
+    if 'Canal sugerido' not in df_resultados.columns:
+        raise ValueError("La columna 'Canal sugerido' no está en el DataFrame.")
+
+    # Conteo actual de canales sugeridos
+    conteo_actual = df_resultados['Canal sugerido'].value_counts().to_dict()
+
+    # Estrategia sugerida (personalizable según tus objetivos de conversión)
+    # Objetivo: Visibilidad (Blog), Captura (Lead Magnet), Nutrición (Email)
+    estrategia_ideal = {
+        "Blog": 60,
+        "Lead Magnet": 25,
+        "Email": 10,
+        "Herramienta con IA": 5
+    }
+
+    total = len(df_resultados)
+    resumen = []
+
+    for canal, porcentaje_ideal in estrategia_ideal.items():
+        actual = conteo_actual.get(canal, 0)
+        ideal = round(total * (porcentaje_ideal / 100))
+        diferencia = ideal - actual
+        resumen.append({
+            "Canal": canal,
+            "Contenidos actuales": actual,
+            "Meta sugerida": ideal,
+            "¿Faltan o sobran?": diferencia if diferencia != 0 else "OK"
+        })
+
+    return pd.DataFrame(resumen)
