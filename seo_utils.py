@@ -1,61 +1,85 @@
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import cosine_similarity
+from collections import Counter
+import numpy as np
 
-
-def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
+def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     try:
-        # Aseguramos tipos numéricos
-        df_keywords["posición_promedio"] = pd.to_numeric(df_keywords["posición_promedio"], errors="coerce")
-        df_keywords["volumen_de_búsqueda"] = pd.to_numeric(df_keywords["volumen_de_búsqueda"], errors="coerce")
-        df_keywords["tráfico_estimado"] = pd.to_numeric(df_keywords["tráfico_estimado"], errors="coerce")
-        df_keywords["dificultad"] = pd.to_numeric(df_keywords["dificultad"], errors="coerce")
+        df = df_analisis.merge(df_auditoria, left_on='url', right_on='URL', how='left')
 
-        df_keywords = df_keywords.dropna(subset=["posición_promedio", "volumen_de_búsqueda", "tráfico_estimado", "dificultad"])
+        df['posición_promedio'] = pd.to_numeric(df['posición_promedio'], errors='coerce')
+        df['volumen_de_búsqueda'] = pd.to_numeric(df['volumen_de_búsqueda'], errors='coerce')
+        df['dificultad'] = pd.to_numeric(df['dificultad'], errors='coerce')
+        df['tráfico_estimado'] = pd.to_numeric(df['tráfico_estimado'], errors='coerce')
+        df['leads 90 d'] = pd.to_numeric(df['leads 90 d'], errors='coerce')
 
-        # Unión por URL
-        df_merged = pd.merge(
-            df_keywords,
-            df_auditoria,
-            left_on="url",
-            right_on="URL",
-            how="inner"
+        df = df.dropna(subset=['posición_promedio', 'volumen_de_búsqueda', 'dificultad', 'tráfico_estimado'])
+
+        df['score_optimización'] = (
+            (1 / (df['posición_promedio'] + 1)) *
+            df['volumen_de_búsqueda'] *
+            (1 - df['dificultad'] / 100) *
+            (df['tráfico_estimado'] + 1)
         )
 
-        # Normalización de leads
-        df_merged["genera_leads"] = pd.to_numeric(df_merged["Leads 90 d"], errors="coerce").fillna(0)
+        df_ordenado = df.sort_values(by='score_optimización', ascending=False)
+        df_top = df_ordenado.head(45)
 
-        df_filtrado = df_merged[
-            (df_merged["posición_promedio"] > 6) &
-            (df_merged["posición_promedio"] <= 20) &
-            (df_merged["volumen_de_búsqueda"] > 100) &
-            (df_merged["tráfico_estimado"] > 0) &
-            (df_merged["dificultad"] < 70)
+        columnas_resultado = [
+            'url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda',
+            'dificultad', 'tráfico_estimado', 'tipo_de_contenido', 'Cluster',
+            'Sub-cluster (si aplica)', 'Etapa del funnel', 'leads 90 d', 'score_optimización'
         ]
 
-        return df_filtrado[[
-            "url", "palabra_clave", "posición_promedio", "volumen_de_búsqueda", "tráfico_estimado",
-            "dificultad", "tipo_de_contenido", "Cluster", "Sub-cluster (si aplica)",
-            "Vigencia del contenido", "genera_leads", "Etapa del funnel"
-        ]]
+        df_resultado = df_top[columnas_resultado].copy()
+
+        return df_resultado
 
     except Exception as e:
-        raise RuntimeError(f"Error en filtrado: {e}")
+        raise ValueError(f"Error en filtrado: {e}")
 
-
-def generar_palabras_clave_sugeridas(df_filtrado):
+def generar_keywords_por_cluster(df_analisis, df_auditoria):
     try:
-        combinaciones = df_filtrado.groupby(["Cluster", "Sub-cluster (si aplica)", "Etapa del funnel"])["palabra_clave"].apply(list).reset_index()
-        combinaciones.rename(columns={"palabra_clave": "palabras_clave_sugeridas"}, inplace=True)
-        return combinaciones
-    except Exception as e:
-        raise RuntimeError(f"Error al generar palabras clave sugeridas: {e}")
+        df = df_analisis.merge(df_auditoria, left_on='url', right_on='URL', how='left')
+        df.dropna(subset=['palabra_clave'], inplace=True)
 
+        agrupado = df.groupby(['Cluster', 'Sub-cluster (si aplica)', 'Etapa del funnel'])
 
-def generar_sugerencias_titulos_y_canales(df_palabras_sugeridas):
-    try:
-        df_palabras_sugeridas["sugerencias_titulo"] = df_palabras_sugeridas["palabras_clave_sugeridas"].apply(
-            lambda x: [f"Estrategias para {palabra}" for palabra in x]
-        )
-        df_palabras_sugeridas["canales_recomendados"] = "Blog, SEO, LinkedIn"
-        return df_palabras_sugeridas
+        resultados = []
+
+        for (cluster, subcluster, funnel), grupo in agrupado:
+            palabras = grupo['palabra_clave'].astype(str).tolist()
+            corpus = [" ".join(palabras)]
+
+            if not corpus[0].strip():
+                continue
+
+            vectorizer = TfidfVectorizer()
+            X = vectorizer.fit_transform(corpus)
+
+            num_clusters = min(1, X.shape[0])
+            if num_clusters == 0:
+                continue
+
+            kmeans = KMeans(n_clusters=1, random_state=0, n_init='auto').fit(X)
+            centroide = kmeans.cluster_centers_[0]
+
+            similitudes = cosine_similarity(X, [centroide])
+            top_n = min(5, len(palabras))
+
+            palabras_importantes = [palabra for palabra, _ in Counter(palabras).most_common(top_n)]
+
+            for palabra in palabras_importantes:
+                resultados.append({
+                    'Cluster': cluster,
+                    'Sub-cluster (si aplica)': subcluster,
+                    'Palabra clave sugerida': palabra,
+                    'Etapa del funnel': funnel
+                })
+
+        return pd.DataFrame(resultados)
+
     except Exception as e:
-        raise RuntimeError(f"Error al generar sugerencias: {e}")
+        raise ValueError(f"Error en generación de keywords: {e}")
