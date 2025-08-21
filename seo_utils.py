@@ -49,7 +49,7 @@ def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
         raise ValueError(f"Error en filtrado: {str(e)}")
 
 
-def generar_keywords_por_cluster(df_keywords, df_auditoria):
+def generar_keywords_por_cluster(df_keywords, df_auditoria, archivo_keywords_externas=None):
     try:
         df_keywords = df_keywords.copy()
         df_auditoria = df_auditoria.copy()
