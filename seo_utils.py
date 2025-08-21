@@ -1,85 +1,67 @@
+# Contenido corregido de seo_utils.py
+
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
+from sklearn.preprocessing import normalize
 
-def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    df_analisis = df_analisis.copy()
-    df_auditoria = df_auditoria.copy()
-
+# -------------------------
+# FUNCION 1: Contenidos con potencial
+# -------------------------
+def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
     try:
-        # Unir por URL (sin modificar nombres de columnas)
-        df = pd.merge(df_analisis, df_auditoria, how='inner', on='URL')
+        # Convertir columnas numéricas de auditoría a float
+        for col in ['Número de visitas', 'Rebote %', 'Leads 90 d', 'CTR']:
+            if col in df_auditoria.columns:
+                df_auditoria[col] = pd.to_numeric(df_auditoria[col], errors='coerce')
 
-        # Convertir columnas a numéricas con coerción de errores
-        for col in ['posición_promedio', 'volumen_de_búsqueda', 'dificultad', 'tráfico_estimado', 'Leads 90 d']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+        # Unir por URL (respetando nombres reales)
+        df = pd.merge(df_keywords, df_auditoria, left_on='url', right_on='URL', how='inner')
 
-        # Filtros
-        df = df[df['posición_promedio'] > 3]
-        df = df[df['posición_promedio'] <= 20]
-        df = df[df['tráfico_estimado'] > 0]
-        df = df[df['Leads 90 d'] > 0]
-
-        # Calcular score
-        df['score_optimización'] = (
-            (21 - df['posición_promedio']) * 0.4 +
-            df['volumen_de_búsqueda'] * 0.2 +
-            (1 / (df['dificultad'] + 1)) * 0.1 +
-            df['tráfico_estimado'] * 0.2 +
-            df['Leads 90 d'] * 0.1
-        )
-
-        df = df.sort_values(by='score_optimización', ascending=False)
-
-        columnas_resultado = [
-            'URL', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda',
-            'dificultad', 'tráfico_estimado', 'tipo_de_contenido', 'Cluster',
-            'Sub-cluster (si aplica)', 'Funnel', 'Leads 90 d', 'score_optimización'
+        # Agregar columna 'etapa_funnel'
+        condiciones = [
+            (df['posición_promedio'] > 20),
+            (df['posición_promedio'] <= 20) & (df['posición_promedio'] > 10),
+            (df['posición_promedio'] <= 10)
         ]
+        valores = ['TOFU', 'MOFU', 'BOFU']
+        df['etapa_funnel'] = np.select(condiciones, valores, default='TOFU')
 
-        return df[columnas_resultado].head(40)
-    
+        # Guardar df con columna etapa_funnel para futuras funciones
+        return df
     except Exception as e:
-        raise ValueError(f"Error en filtrar_contenidos_con_potencial: {e}")
+        raise RuntimeError(f"Error al procesar los archivos: {e}")
 
-
-def generar_keywords_por_cluster(df_analisis, df_auditoria, top_n=5):
-    resultados = []
-
+# -------------------------
+# FUNCION 2: Nuevas palabras clave por cluster y etapa
+# -------------------------
+def generar_keywords_sugeridas(df_combinado):
     try:
-        agrupado = df_auditoria.groupby(['Cluster', 'Sub-cluster (si aplica)', 'Funnel'])
-
-        for (cluster, subcluster, funnel), grupo in agrupado:
-            urls = grupo['URL'].dropna().unique()
-            textos = df_analisis[df_analisis['URL'].isin(urls)]['palabra_clave'].dropna().astype(str)
-
-            if len(textos) < 2:
+        # Agrupar por Cluster y etapa_funnel
+        resultados = []
+        for (cluster, etapa), grupo in df_combinado.groupby(['Cluster', 'etapa_funnel']):
+            textos = grupo['palabra_clave'].astype(str).tolist()
+            if not textos:
                 continue
-
-            vectorizer = TfidfVectorizer(stop_words='spanish')
+            vectorizer = TfidfVectorizer()
             X = vectorizer.fit_transform(textos)
-            kmeans = KMeans(n_clusters=min(len(textos), 3), random_state=0)
-            kmeans.fit(X)
-
-            terms = vectorizer.get_feature_names_out()
-            order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
-
-            palabras_sugeridas = []
+            kmeans = KMeans(n_clusters=min(5, len(textos)), random_state=0).fit(X)
+            grupo['cluster_keywords'] = kmeans.labels_
+            top_keywords = []
             for i in range(kmeans.n_clusters):
-                for ind in order_centroids[i, :top_n]:
-                    palabras_sugeridas.append(terms[ind])
+                indices = np.where(kmeans.labels_ == i)
+                palabras = X[indices].sum(axis=0).A1
+                top_n = np.argsort(palabras)[-5:][::-1]
+                terms = [vectorizer.get_feature_names_out()[j] for j in top_n]
+                top_keywords.append(', '.join(terms))
 
-            ranking = pd.Series(palabras_sugeridas).value_counts().head(top_n).items()
-
-            for palabra, score in ranking:
-                resultados.append({
-                    'Cluster': cluster,
-                    'Sub-cluster (si aplica)': subcluster,
-                    'Funnel': funnel,
-                    'Palabra clave sugerida': palabra
-                })
+            resultados.append({
+                'Cluster': cluster,
+                'Etapa del Funnel': etapa,
+                'Palabras clave sugeridas': top_keywords
+            })
 
         return pd.DataFrame(resultados)
-    
     except Exception as e:
-        raise ValueError(f"Error en generar_keywords_por_cluster: {e}")
+        raise RuntimeError(f"Error al generar palabras clave: {e}")
