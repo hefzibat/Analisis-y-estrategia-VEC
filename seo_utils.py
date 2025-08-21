@@ -1,69 +1,54 @@
 import pandas as pd
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-from collections import defaultdict
-
 
 def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
-    df_analisis = df_analisis.copy()
-    df_auditoria = df_auditoria.copy()
+    # Convertir nombres de columnas a minúsculas
+    df_analisis.columns = df_analisis.columns.str.lower()
+    df_auditoria.columns = df_auditoria.columns.str.lower()
 
-    df_auditoria = df_auditoria.rename(columns={
-        "Leads 90 d *(esta se usará como 'genera_leads')": "genera_leads"
-    })
+    # Validar columnas requeridas
+    columnas_analisis = ['url', 'palabra_clave', 'posición_promedio', 'volumen_de_búsqueda', 'dificultad', 'tráfico_estimado']
+    columnas_auditoria = ['url', 'título', 'tipo de contenido', 'cluster', 'sub-cluster (si aplica)', 'leads 90 d *(esta se usará como \'genera_leads\')']
 
-    df = pd.merge(df_analisis, df_auditoria, how="inner", left_on="url", right_on="URL")
+    for col in columnas_analisis:
+        if col not in df_analisis.columns:
+            raise ValueError(f"Columna faltante en archivo de análisis: {col}")
+    for col in columnas_auditoria:
+        if col not in df_auditoria.columns:
+            raise ValueError(f"Columna faltante en archivo de auditoría: {col}")
 
-    df['score'] = (
-        (1 / (df['posición_promedio'] + 1)) * 0.4 +
-        (df['volumen_de_búsqueda'] / (df['volumen_de_búsqueda'].max() + 1)) * 0.2 +
-        (df['tráfico_estimado'] / (df['tráfico_estimado'].max() + 1)) * 0.2 +
-        (df['genera_leads'] / (df['genera_leads'].max() + 1)) * 0.2
-    )
+    df = pd.merge(df_analisis, df_auditoria, on='url', how='left')
 
-    df_filtrado = df[df['score'] > df['score'].median()].copy()
+    # Calcular score combinado
+    df['posición_normalizada'] = 1 - (df['posición_promedio'] / df['posición_promedio'].max())
+    df['volumen_normalizado'] = df['volumen_de_búsqueda'] / df['volumen_de_búsqueda'].max()
+    df['tráfico_normalizado'] = df['tráfico_estimado'] / df['tráfico_estimado'].max()
+    df['score_optimizacion'] = (df['posición_normalizada'] + df['volumen_normalizado'] + df['tráfico_normalizado']) / 3
 
-    return df_filtrado
-
-
-def generar_keywords_por_cluster(df, columnas_texto):
-    df = df.copy()
-
-    if 'Cluster' not in df.columns or 'Sub-cluster (si aplica)' not in df.columns:
-        raise ValueError("Faltan columnas 'Cluster' o 'Sub-cluster (si aplica)' en el archivo de auditoría")
-
-    if not set(columnas_texto).issubset(df.columns):
-        raise ValueError(f"Las columnas de texto proporcionadas no existen en el DataFrame: {columnas_texto}")
-
-    df['texto_completo'] = df[columnas_texto].fillna('').agg(' '.join, axis=1)
-
-    resultados = defaultdict(list)
-
-    for (cluster, subcluster), grupo in df.groupby(['Cluster', 'Sub-cluster (si aplica)']):
-        textos = grupo['texto_completo'].values
-        if len(textos) < 2:
-            continue
-
-        vectorizer = TfidfVectorizer(stop_words='spanish', max_features=50)
-        X = vectorizer.fit_transform(textos)
-
-        k = min(5, X.shape[0])
-        modelo = KMeans(n_clusters=k, random_state=42, n_init='auto')
-        modelo.fit(X)
-
-        palabras = vectorizer.get_feature_names_out()
-        orden_centroides = modelo.cluster_centers_.argsort()[:, ::-1]
-
-        keywords = set()
-        for i in range(k):
-            for idx in orden_centroides[i, :3]:
-                keywords.add(palabras[idx])
-
-        resultados[(cluster, subcluster)] = list(keywords)
-
-    df_resultado = pd.DataFrame([
-        {'Cluster': c, 'Sub-cluster': s, 'Palabras clave sugeridas': ', '.join(kws)}
-        for (c, s), kws in resultados.items()
-    ])
-
+    df_resultado = df.sort_values(by='score_optimizacion', ascending=False).head(40)
     return df_resultado
+
+def generar_keywords_por_cluster(df, num_keywords=5):
+    df = df.copy()
+    df.columns = df.columns.str.lower()
+
+    if 'palabra_clave' not in df.columns or 'cluster' not in df.columns:
+        raise ValueError("Las columnas 'palabra_clave' y 'cluster' deben estar en el DataFrame")
+
+    resultados = []
+    for cluster, grupo in df.groupby('cluster'):
+        textos = grupo['palabra_clave'].dropna().astype(str)
+        if len(textos) == 0:
+            continue
+        vectorizer = TfidfVectorizer()
+        tfidf = vectorizer.fit_transform(textos)
+        sum_tfidf = tfidf.sum(axis=0).A1
+        palabras = vectorizer.get_feature_names_out()
+        top_keywords = [palabras[i] for i in sum_tfidf.argsort()[::-1][:num_keywords]]
+        resultados.append({
+            'cluster': cluster,
+            'sugerencias_keywords': ', '.join(top_keywords)
+        })
+    return pd.DataFrame(resultados)
