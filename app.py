@@ -2,48 +2,30 @@ import streamlit as st
 import pandas as pd
 from seo_utils import filtrar_contenidos_con_potencial, generar_nuevas_keywords, generar_sugerencias_contenido
 
-st.set_page_config(layout="wide")
-st.title("🔍 Análisis y Estrategia de Contenidos - VEC")
+st.set_page_config(page_title="SEO Vec", layout="wide")
+st.title("Estrategia SEO VEC")
 
-st.markdown("""
-Esta app permite identificar contenidos con mayor potencial de optimización, generar nuevas keywords por clúster y subclúster,
-y crear una estrategia de contenidos alineada con la etapa del funnel.
-""")
+df_ana = st.file_uploader("Archivo Análisis (keywords)", type=["csv", "xlsx"])
+df_aud = st.file_uploader("Archivo Auditoría (cluster)", type=["csv", "xlsx"])
 
-st.sidebar.header("📁 Subir Archivos")
-archivo_analisis = st.sidebar.file_uploader("Archivo de Análisis de Keywords (CSV o XLSX)", type=["csv", "xlsx"])
-archivo_auditoria = st.sidebar.file_uploader("Archivo de Auditoría de Contenidos (CSV o XLSX)", type=["csv", "xlsx"])
-
-if archivo_analisis and archivo_auditoria:
+if df_ana and df_aud:
     try:
-        if archivo_analisis.name.endswith(".csv"):
-            df_analisis = pd.read_csv(archivo_analisis)
-        else:
-            df_analisis = pd.read_excel(archivo_analisis)
+        df_analisis = pd.read_excel(df_ana) if df_ana.name.endswith(".xlsx") else pd.read_csv(df_ana)
+        df_auditoria = pd.read_excel(df_aud) if df_aud.name.endswith(".xlsx") else pd.read_csv(df_aud)
 
-        if archivo_auditoria.name.endswith(".csv"):
-            df_auditoria = pd.read_csv(archivo_auditoria)
-        else:
-            df_auditoria = pd.read_excel(archivo_auditoria)
+        st.header("1. Contenido con Potencial")
+        df_filtrado = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
+        st.dataframe(df_filtrado)
 
-        st.success("Archivos cargados correctamente ✅")
+        st.header("2. Nuevas Keywords por Cluster")
+        df_clustered, keywords_by_cluster = generar_nuevas_keywords(df_filtrado)
+        st.write(keywords_by_cluster)
 
-        st.markdown("---")
-        st.header("1️⃣ Contenidos con Potencial")
-        df_filtrados = filtrar_contenidos_con_potencial(df_analisis, df_auditoria)
-        st.dataframe(df_filtrados)
-
-        st.markdown("---")
-        st.header("2️⃣ Nuevas Keywords Estratégicas")
-        nuevas_keywords = generar_nuevas_keywords(df_filtrados)
-        st.dataframe(nuevas_keywords)
-
-        st.markdown("---")
-        st.header("3️⃣ Sugerencias de Títulos y Canales")
-        sugerencias = generar_sugerencias_contenido(nuevas_keywords)
-        st.dataframe(sugerencias)
+        st.header("3. Sugerencias de Contenido")
+        df_sugs = generar_sugerencias_contenido(df_clustered)
+        st.dataframe(df_sugs)
 
     except Exception as e:
-        st.error(f"Ocurrió un error al procesar los archivos: {e}")
+        st.error(f"Error: {e}")
 else:
-    st.info("Por favor, sube ambos archivos para comenzar el análisis.")
+    st.info("Carga ambos archivos para iniciar.")
