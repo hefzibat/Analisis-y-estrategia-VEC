@@ -1,67 +1,59 @@
-# Contenido corregido de seo_utils.py
-
 import pandas as pd
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import normalize
 
-# -------------------------
-# FUNCION 1: Contenidos con potencial
-# -------------------------
+
 def filtrar_contenidos_con_potencial(df_keywords, df_auditoria):
     try:
-        # Convertir columnas numéricas de auditoría a float
-        for col in ['Número de visitas', 'Rebote %', 'Leads 90 d', 'CTR']:
-            if col in df_auditoria.columns:
-                df_auditoria[col] = pd.to_numeric(df_auditoria[col], errors='coerce')
+        df_keywords["posición_promedio"] = pd.to_numeric(df_keywords["posición_promedio"], errors="coerce")
+        df_keywords["volumen_de_búsqueda"] = pd.to_numeric(df_keywords["volumen_de_búsqueda"], errors="coerce")
+        df_keywords["tráfico_estimado"] = pd.to_numeric(df_keywords["tráfico_estimado"], errors="coerce")
+        df_keywords["dificultad"] = pd.to_numeric(df_keywords["dificultad"], errors="coerce")
 
-        # Unir por URL (respetando nombres reales)
-        df = pd.merge(df_keywords, df_auditoria, left_on='url', right_on='URL', how='inner')
+        df_keywords = df_keywords.dropna(subset=["posición_promedio", "volumen_de_búsqueda", "tráfico_estimado", "dificultad"])
 
-        # Agregar columna 'etapa_funnel'
-        condiciones = [
-            (df['posición_promedio'] > 20),
-            (df['posición_promedio'] <= 20) & (df['posición_promedio'] > 10),
-            (df['posición_promedio'] <= 10)
+        df_merged = pd.merge(
+            df_keywords,
+            df_auditoria,
+            left_on="url",
+            right_on="URL",
+            how="inner"
+        )
+
+        df_merged["genera_leads"] = pd.to_numeric(df_merged["Leads 90 d"], errors="coerce").fillna(0)
+
+        df_filtrado = df_merged[
+            (df_merged["posición_promedio"] > 6) &
+            (df_merged["posición_promedio"] <= 20) &
+            (df_merged["volumen_de_búsqueda"] > 100) &
+            (df_merged["tráfico_estimado"] > 0) &
+            (df_merged["dificultad"] < 70)
         ]
-        valores = ['TOFU', 'MOFU', 'BOFU']
-        df['etapa_funnel'] = np.select(condiciones, valores, default='TOFU')
 
-        # Guardar df con columna etapa_funnel para futuras funciones
-        return df
+        return df_filtrado[[
+            "palabra_clave", "posición_promedio", "volumen_de_búsqueda", "tráfico_estimado",
+            "dificultad", "tipo_de_contenido", "Cluster", "Sub-cluster (si aplica)",
+            "Vigencia del contenido", "genera_leads", "Etapa del funnel"
+        ]]
     except Exception as e:
-        raise RuntimeError(f"Error al procesar los archivos: {e}")
+        raise RuntimeError(f"Error al filtrar contenidos: {e}")
 
-# -------------------------
-# FUNCION 2: Nuevas palabras clave por cluster y etapa
-# -------------------------
-def generar_keywords_sugeridas(df_combinado):
+
+def generar_palabras_clave_sugeridas(df_filtrado):
     try:
-        # Agrupar por Cluster y etapa_funnel
-        resultados = []
-        for (cluster, etapa), grupo in df_combinado.groupby(['Cluster', 'etapa_funnel']):
-            textos = grupo['palabra_clave'].astype(str).tolist()
-            if not textos:
-                continue
-            vectorizer = TfidfVectorizer()
-            X = vectorizer.fit_transform(textos)
-            kmeans = KMeans(n_clusters=min(5, len(textos)), random_state=0).fit(X)
-            grupo['cluster_keywords'] = kmeans.labels_
-            top_keywords = []
-            for i in range(kmeans.n_clusters):
-                indices = np.where(kmeans.labels_ == i)
-                palabras = X[indices].sum(axis=0).A1
-                top_n = np.argsort(palabras)[-5:][::-1]
-                terms = [vectorizer.get_feature_names_out()[j] for j in top_n]
-                top_keywords.append(', '.join(terms))
-
-            resultados.append({
-                'Cluster': cluster,
-                'Etapa del Funnel': etapa,
-                'Palabras clave sugeridas': top_keywords
-            })
-
-        return pd.DataFrame(resultados)
+        combinaciones = df_filtrado.groupby(["Cluster", "Sub-cluster (si aplica)", "Etapa del funnel"])["palabra_clave"].apply(list).reset_index()
+        combinaciones.rename(columns={"palabra_clave": "palabras_clave_sugeridas"}, inplace=True)
+        return combinaciones
     except Exception as e:
-        raise RuntimeError(f"Error al generar palabras clave: {e}")
+        raise RuntimeError(f"Error al generar palabras clave sugeridas: {e}")
+
+
+def generar_sugerencias_titulos_y_canales(df_palabras_sugeridas):
+    try:
+        df_palabras_sugeridas["sugerencias_titulo"] = df_palabras_sugeridas["palabras_clave_sugeridas"].apply(
+            lambda x: [f"Estrategias para {palabra}" for palabra in x]
+        )
+        df_palabras_sugeridas["canales_recomendados"] = "Blog, SEO, LinkedIn"
+        return df_palabras_sugeridas
+    except Exception as e:
+        raise RuntimeError(f"Error al generar sugerencias: {e}")
