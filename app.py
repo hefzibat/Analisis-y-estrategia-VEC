@@ -34,7 +34,7 @@ if archivo_analisis and archivo_auditoria:
 
         st.subheader("2. Nuevas palabras clave")
         df_clusterizado, nuevas_keywords = generar_nuevas_keywords(df_filtrado)
-        st.dataframe(df_clusterizado[["URL", "PALABRA CLAVE", "CLUSTER"]])
+        st.dataframe(df_clusterizado[["URL", "PALABRA CLAVE", "CLUSTER", "CLUSTER NOMBRE", "SUBCLUSTER"]])
 
         st.subheader("3. Sugerencias de títulos y canales")
         df_sugerencias = generar_sugerencias_contenido(nuevas_keywords, df_clusterizado)
@@ -50,13 +50,11 @@ if archivo_analisis and archivo_auditoria:
             return output
 
         st.download_button(
-            label="Descargar resultados en Excel",
+            label="📥 Descargar Excel con resultados",
             data=generar_excel(),
-            file_name="resultados_estrategia_contenidos.xlsx",
+            file_name="analisis_seo_resultados.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
     except Exception as e:
         st.error(f"Ocurrió un error al procesar los archivos: {e}")
-else:
-    st.warning("Por favor carga ambos archivos para iniciar el análisis.")
