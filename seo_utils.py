@@ -33,23 +33,41 @@ def filtrar_contenidos_con_potencial(df_analisis, df_auditoria):
     # Merge con auditoría para conservar cluster y subcluster
     df = pd.merge(df_analisis, df_auditoria, on="URL", how="left")
 
-    # Validar nuevamente columnas tras merge
-    columnas_post_merge = ["PALABRA CLAVE", "VOLUMEN", "TRÁFICO", "DIFICULTAD", "GENERA LEADS"]
-    for col in columnas_post_merge:
-        if col not in df.columns:
-            raise KeyError(f"Falta la columna requerida en el archivo combinado: {col}")
+    # Columnas opcionales para el score
+    columnas_post_merge = {
+        "VOLUMEN": "VOLUMEN_NORM",
+        "TRÁFICO": "TRÁFICO_NORM",
+        "DIFICULTAD": "DIFICULTAD_NORM",
+        "GENERA LEADS": "LEADS_NORM"
+    }
 
-    df = df.dropna(subset=columnas_post_merge, how="any")
+    columnas_disponibles = []
+    for col in columnas_post_merge:
+        if col in df.columns:
+            columnas_disponibles.append(col)
+        else:
+            print(f"⚠️ Advertencia: No se encontró la columna '{col}', no se usará para calcular el SCORE.")
+
+    if len(columnas_disponibles) < 2:
+        raise ValueError("Se requieren al menos 2 métricas para calcular el SCORE.")
+
+    # Filtrado de filas con datos válidos
+    df = df.dropna(subset=columnas_disponibles, how="any")
 
     # Normalización
-    df["VOLUMEN_NORM"] = (df["VOLUMEN"] - df["VOLUMEN"].min()) / (df["VOLUMEN"].max() - df["VOLUMEN"].min())
-    df["TRÁFICO_NORM"] = (df["TRÁFICO"] - df["TRÁFICO"].min()) / (df["TRÁFICO"].max() - df["TRÁFICO"].min())
-    df["DIFICULTAD_NORM"] = 1 - ((df["DIFICULTAD"] - df["DIFICULTAD"].min()) / (df["DIFICULTAD"].max() - df["DIFICULTAD"].min()))
-    df["LEADS_NORM"] = df["GENERA LEADS"].apply(lambda x: 1 if x else 0)
+    if "VOLUMEN" in df.columns:
+        df["VOLUMEN_NORM"] = (df["VOLUMEN"] - df["VOLUMEN"].min()) / (df["VOLUMEN"].max() - df["VOLUMEN"].min())
+    if "TRÁFICO" in df.columns:
+        df["TRÁFICO_NORM"] = (df["TRÁFICO"] - df["TRÁFICO"].min()) / (df["TRÁFICO"].max() - df["TRÁFICO"].min())
+    if "DIFICULTAD" in df.columns:
+        df["DIFICULTAD_NORM"] = 1 - ((df["DIFICULTAD"] - df["DIFICULTAD"].min()) / (df["DIFICULTAD"].max() - df["DIFICULTAD"].min()))
+    if "GENERA LEADS" in df.columns:
+        df["LEADS_NORM"] = df["GENERA LEADS"].apply(lambda x: 1 if x else 0)
 
-    df["SCORE"] = df[["VOLUMEN_NORM", "TRÁFICO_NORM", "DIFICULTAD_NORM", "LEADS_NORM"]].mean(axis=1)
+    columnas_score = [col for col in columnas_post_merge.values() if col in df.columns]
+    df["SCORE"] = df[columnas_score].mean(axis=1)
+
     df_ordenado = df.sort_values("SCORE", ascending=False)
-
     top_contenidos = df_ordenado.head(int(len(df_ordenado) * 0.45))
 
     return top_contenidos
