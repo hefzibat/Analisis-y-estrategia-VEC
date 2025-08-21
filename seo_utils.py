@@ -75,10 +75,14 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
 
+    # Renombrar columna si viene como 'Keyword'
+    if 'Keyword' in df_keywords_externas.columns:
+        df_keywords_externas = df_keywords_externas.rename(columns={"Keyword": "palabra_clave"})
+
     # Validar columnas necesarias
     columnas_analisis = ['palabra_clave']
     columnas_auditoria = ['Cluster', 'Sub-cluster (si aplica)']
-    columnas_externas = ['Keyword']
+    columnas_externas = ['palabra_clave']
 
     for col in columnas_analisis:
         if col not in df_analisis.columns:
@@ -90,35 +94,33 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
         if col not in df_keywords_externas.columns:
             raise ValueError(f"Falta columna en keywords externas: {col}")
 
-    # Preprocesar y limpiar
+    # Preprocesar
     df_analisis['palabra_clave'] = df_analisis['palabra_clave'].str.lower().str.strip()
-    df_keywords_externas['Keyword'] = df_keywords_externas['Keyword'].str.lower().str.strip()
+    df_keywords_externas['palabra_clave'] = df_keywords_externas['palabra_clave'].str.lower().str.strip()
 
     # Filtrar keywords externas nuevas
     keywords_actuales = df_analisis['palabra_clave'].unique()
-    df_nuevas = df_keywords_externas[~df_keywords_externas['Keyword'].isin(keywords_actuales)].copy()
+    df_nuevas = df_keywords_externas[~df_keywords_externas['palabra_clave'].isin(keywords_actuales)].copy()
 
     if df_nuevas.empty:
         return pd.DataFrame(columns=["Palabra Clave", "Título posible", "Cluster", "Subcluster", "Canal sugerido"])
 
-    # TF-IDF para similitud con clusters/subclusters
+    # Similaridad para clusters y subclusters
     df_nuevas['match_cluster'] = ''
     df_nuevas['match_subcluster'] = ''
 
     clusters = df_auditoria['Cluster'].dropna().unique()
     subclusters = df_auditoria['Sub-cluster (si aplica)'].dropna().unique()
 
-    vectorizer = TfidfVectorizer().fit(list(df_nuevas['Keyword']) + list(clusters) + list(subclusters))
-    keyword_vecs = vectorizer.transform(df_nuevas['Keyword'])
+    vectorizer = TfidfVectorizer().fit(list(df_nuevas['palabra_clave']) + list(clusters) + list(subclusters))
+    keyword_vecs = vectorizer.transform(df_nuevas['palabra_clave'])
 
-    # Encontrar cluster más similar
     if len(clusters) > 0:
         cluster_vecs = vectorizer.transform(clusters)
         sim_cluster = cosine_similarity(keyword_vecs, cluster_vecs)
         best_cluster = sim_cluster.argmax(axis=1)
         df_nuevas['match_cluster'] = [clusters[i] for i in best_cluster]
 
-    # Encontrar subcluster más similar
     if len(subclusters) > 0:
         subcluster_vecs = vectorizer.transform(subclusters)
         sim_subcluster = cosine_similarity(keyword_vecs, subcluster_vecs)
@@ -127,7 +129,6 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
     else:
         df_nuevas['match_subcluster'] = ''
 
-    # Canal sugerido heurístico
     def canal_sugerido(palabra):
         palabra = palabra.lower()
         if any(x in palabra for x in ["automatiza", "herramienta", "plantilla", "generador"]):
@@ -141,14 +142,11 @@ def generar_ideas_con_keywords_externas(df_analisis, df_auditoria, df_keywords_e
         else:
             return "blog"
 
-    df_nuevas['canal'] = df_nuevas['Keyword'].apply(canal_sugerido)
+    df_nuevas['canal'] = df_nuevas['palabra_clave'].apply(canal_sugerido)
+    df_nuevas['titulo'] = df_nuevas['palabra_clave'].apply(lambda x: f"Cómo aprovechar {x} en tu estrategia")
 
-    # Título tentativo
-    df_nuevas['titulo'] = df_nuevas['Keyword'].apply(lambda x: f"Cómo aprovechar {x} en tu estrategia")
-
-    # Seleccionar columnas finales
     df_resultado = df_nuevas.rename(columns={
-        'Keyword': 'Palabra Clave',
+        'palabra_clave': 'Palabra Clave',
         'match_cluster': 'Cluster',
         'match_subcluster': 'Subcluster',
         'canal': 'Canal sugerido',
